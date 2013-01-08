@@ -10,12 +10,17 @@ import com.officedrop.redis.failover.utils.SleepUtils;
 import com.officedrop.redis.failover.utils.ThreadPool;
 import com.officedrop.redis.failover.zookeeper.ZooKeeperNetworkClient;
 import junit.framework.Assert;
+import org.apache.commons.io.IOUtils;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
+import java.io.Closeable;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * User: Maurício Linhares
@@ -24,47 +29,55 @@ import java.util.Set;
  */
 public class NodeManagerTest {
 
-    @Test
-    public void testStartFromBlankConfiguration() throws Exception {
+    private static final AtomicInteger COUNT = new AtomicInteger(10000);
 
-        TestingServer server = new TestingServer();
+    TestingServer server;
+    RedisServer masterRedis;
+    RedisServer slaveRedis1;
+    RedisServer slaveRedis2;
+    ZooKeeperNetworkClient zooKeeper;
+    List<HostConfiguration> hosts;
 
-        RedisServer masterRedis = new RedisServer("localhost", 7000);
+    @Before
+    public void setup() throws Exception {
+        server = new TestingServer();
+
+        masterRedis = new RedisServer("localhost", COUNT.getAndIncrement());
         masterRedis.start();
 
-        RedisServer slaveRedis1 = new RedisServer("localhost", 7001);
+        slaveRedis1 = new RedisServer("localhost", COUNT.getAndIncrement());
         slaveRedis1.start();
         slaveRedis1.setMasterHost("localhost");
-        slaveRedis1.setMasterPort("7000");
+        slaveRedis1.setMasterPort( masterRedis.getPort() );
 
-        RedisServer slaveRedis2 = new RedisServer("localhost", 7002);
+        slaveRedis2 = new RedisServer("localhost", COUNT.getAndIncrement());
         slaveRedis2.start();
         slaveRedis2.setMasterHost("localhost");
-        slaveRedis2.setMasterPort("7000");
+        slaveRedis2.setMasterPort(masterRedis.getPort());
 
-        final ZooKeeperNetworkClient zooKeeper = new ZooKeeperNetworkClient(server.getConnectString());
+        zooKeeper = new ZooKeeperNetworkClient(server.getConnectString());
 
-        List<HostConfiguration> hosts = Arrays.asList(
-                new HostConfiguration("localhost", 7000),
-                new HostConfiguration("localhost", 7001),
-                new HostConfiguration("localhost", 7002) );
+        hosts = Arrays.asList(
+                masterRedis.getHostConfiguration(),
+                slaveRedis1.getHostConfiguration(),
+                slaveRedis2.getHostConfiguration() );
+    }
+
+
+    @After
+    public void tearDown() {
+        close(server, masterRedis, slaveRedis1, slaveRedis2);
+    }
+
+    @Test
+    public void testStartFromBlankConfiguration() throws Exception {
+        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
 
         Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
         slaves.add( hosts.get(1) );
         slaves.add( hosts.get(2) );
 
-        final NodeManager manager = new NodeManager(
-                zooKeeper,
-                hosts,
-                GenericJedisClientFactory.INSTANCE,
-                ThreadPool.POOL,
-                new LatencyFailoverSelectionStrategy(),
-                new SimpleMajorityStrategy(),
-                500,
-                3);
-
-
-        manager.start();
+        final NodeManager manager = create();
 
         SleepUtils.waitUntil(5000, new Function<Boolean>() {
             @Override
@@ -77,15 +90,106 @@ public class NodeManagerTest {
 
         ClusterStatus status = zooKeeper.getClusterData();
 
+        Assert.assertEquals( slaves, status.getSlaves() );
+        Assert.assertEquals( hosts.get(0), status.getMaster() );
+
+        manager.stop();
+    }
+
+    @Test
+    public void testWithOneFailedClient() throws Exception {
+        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+
+        Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
+        slaves.add( hosts.get(1) );
+
+        final NodeManager manager = create();
+
+        SleepUtils.waitUntil(5000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return !status.isEmpty();
+            }
+        });
+
+        slaveRedis2.stop();
+
+        SleepUtils.waitUntil(10000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return !status.getUnavailables().isEmpty();
+            }
+        });
+
+        ClusterStatus status = zooKeeper.getClusterData();
+
         Assert.assertEquals( hosts.get(0), status.getMaster() );
         Assert.assertEquals( slaves, status.getSlaves() );
 
         manager.stop();
-        server.stop();
+    }
 
-        masterRedis.stop();
-        slaveRedis1.stop();
+    @Test
+    public void testWithTwoNodeManagersAtTheSameTime() {
+
+        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+
+        Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
+        slaves.add( hosts.get(1) );
+
+        List<NodeManager> managers = Arrays.asList( create(), create());
+
+        SleepUtils.waitUntil(5000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return !status.isEmpty();
+            }
+        });
+
         slaveRedis2.stop();
+
+        SleepUtils.waitUntil(5000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return !status.getUnavailables().isEmpty();
+            }
+        });
+
+        ClusterStatus status = zooKeeper.getClusterData();
+
+        Assert.assertEquals( hosts.get(0), status.getMaster() );
+        Assert.assertEquals( slaves, status.getSlaves() );
+
+        for ( NodeManager manager : managers ) {
+            manager.stop();
+        }
+
+    }
+
+    private void close( Closeable ... closeables ) {
+        for ( Closeable c : closeables ) {
+            IOUtils.closeQuietly(c);
+        }
+    }
+
+    private NodeManager create() {
+        NodeManager manager =  new NodeManager(
+                zooKeeper,
+                hosts,
+                GenericJedisClientFactory.INSTANCE,
+                ThreadPool.POOL,
+                new LatencyFailoverSelectionStrategy(),
+                new SimpleMajorityStrategy(),
+                1000,
+                3);
+
+        manager.start();
+
+        return manager;
     }
 
 }

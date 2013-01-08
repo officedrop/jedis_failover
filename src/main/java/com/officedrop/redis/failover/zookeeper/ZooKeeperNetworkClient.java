@@ -15,6 +15,7 @@ import org.apache.zookeeper.CreateMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -41,6 +42,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
     private final PathChildrenCache nodesDataCache;
     private final NodeCache clusterDataCache;
     private final LeaderLatch leaderLatch;
+    private volatile boolean closed = false;
 
 
     public ZooKeeperNetworkClient(String hosts) {
@@ -106,6 +108,11 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
 
     @Override
     public void setClusterData(final ClusterStatus clusterStatus) {
+
+        if ( !clusterStatus.hasMaster() ) {
+            throw new IllegalArgumentException("You can't set a cluster status without a master");
+        }
+
         this.createOrSet(CLUSTER_PATH, this.jsonBinder.toBytes(clusterStatus), CreateMode.PERSISTENT);
     }
 
@@ -130,13 +137,21 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
     }
 
     public void close() {
+        log.info("Closking ZookeeperNetworkClient");
+        if ( !this.closed ) {
+            this.closed = true;
+            this.close(this.clusterDataCache);
+            this.close( this.leaderLatch );
+            this.close( this.nodesDataCache );
+            this.close( this.curator );
+        }
+    }
+
+    private void close ( Closeable closeable) {
         try {
-            log.info("Closking ZookeeperNetworkClient");
-            this.clusterDataCache.close();
-            this.leaderLatch.close();
-            this.nodesDataCache.close();
-            this.curator.close();
-        } catch (Exception e) {
+            closeable.close();
+        } catch ( Exception e ) {
+            log.error(String.format("Failed to close %s", closeable), e);
             throw new ZooKeeperException(e);
         }
     }

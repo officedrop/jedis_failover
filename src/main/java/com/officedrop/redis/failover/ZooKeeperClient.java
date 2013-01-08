@@ -1,5 +1,6 @@
 package com.officedrop.redis.failover;
 
+import java.io.Closeable;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -10,7 +11,7 @@ import java.util.concurrent.TimeUnit;
  * Time: 4:19 PM
  */
 
-public interface ZooKeeperClient {
+public interface ZooKeeperClient extends Closeable {
 
     public HostConfiguration getMaster();
 

@@ -3,15 +3,16 @@ package com.officedrop.redis.failover;
 import com.officedrop.redis.failover.jedis.ConnectionException;
 import com.officedrop.redis.failover.jedis.JedisActions;
 import com.officedrop.redis.failover.jedis.JedisClientFactory;
-import com.officedrop.redis.failover.utils.Action;
-import com.officedrop.redis.failover.utils.Action1;
-import com.officedrop.redis.failover.utils.Benchmarker;
-import com.officedrop.redis.failover.utils.Function1;
+import com.officedrop.redis.failover.utils.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -90,14 +91,10 @@ public class Node {
                     }
                 }
 
-                try {
-                    Thread.sleep(this.sleepDelay);
-                } catch (InterruptedException interrupted) {
-                    log.error("Interrupted while sleeping", interrupted);
-                }
-
             } catch (Exception e) {
-                log.error("Exception at loop, ignoring it since it's going to be sent as an event", e);
+                log.error(String.format("Exception at loop, ignoring it since it's going to be sent as an event - %s", this.getHostConfiguration()), e);
+            } finally {
+                SleepUtils.safeSleep(this.sleepDelay, TimeUnit.MILLISECONDS);
             }
         }
     }
@@ -120,17 +117,16 @@ public class Node {
         });
     }
 
-
     public boolean isMaster() {
         return InfoKeys.MASTER.equals(this.info().get(InfoKeys.ROLE));
     }
 
-    public HostConfiguration master() {
+    public HostConfiguration getMasterConfiguration() {
 
         Map<String,String> info = this.info();
 
         if ( info.containsKey( InfoKeys.MASTER_HOST ) && info.containsKey(InfoKeys.MASTER_PORT) ) {
-            return new HostConfiguration( info.get( InfoKeys.MASTER_HOST ), Integer.valueOf( InfoKeys.MASTER_PORT ) );
+            return new HostConfiguration( info.get( InfoKeys.MASTER_HOST ), Integer.valueOf( info.get(InfoKeys.MASTER_PORT) ) );
         } else {
             return null;
         }
@@ -141,7 +137,7 @@ public class Node {
 
         this.currentErrorCount++;
 
-        log.error(String.format("Failed to talk to redis - error count is %s", this.currentErrorCount), e);
+        log.error(String.format("Failed to talk to redis - error count is %s - current state is %s", this.currentErrorCount, this.currentState), e);
 
         if (this.currentErrorCount > this.maxErrors) {
             this.currentState = new NodeState();

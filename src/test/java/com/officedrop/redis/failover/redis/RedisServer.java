@@ -5,6 +5,7 @@ import com.officedrop.redis.failover.utils.Action1;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -19,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Date: 1/2/13
  * Time: 9:31 PM
  */
-public class RedisServer {
+public class RedisServer implements Closeable {
 
     private static final AtomicInteger PORT = new AtomicInteger(10000);
     private static final Logger log = LoggerFactory.getLogger(RedisServer.class);
@@ -27,7 +28,7 @@ public class RedisServer {
     private final String address;
     private final int port;
     private final ServerSocket server;
-    private final ConcurrentMap<String,String> map = new ConcurrentHashMap<String, String>();
+    private final ConcurrentMap<String, String> map = new ConcurrentHashMap<String, String>();
     private String masterHost;
     private String masterPort;
     private volatile boolean running;
@@ -45,11 +46,11 @@ public class RedisServer {
         }
     }
 
-    public void set( String key, String value ) {
+    public void set(String key, String value) {
         this.map.put(key, value);
     }
 
-    public String get( String key ) {
+    public String get(String key) {
         return this.map.get(key);
     }
 
@@ -83,6 +84,10 @@ public class RedisServer {
 
     public void setMasterPort(final String masterPort) {
         this.masterPort = masterPort;
+    }
+
+    public void setMasterPort(final int masterPort) {
+        this.masterPort = String.valueOf(masterPort);
     }
 
     public void start() {
@@ -127,13 +132,19 @@ public class RedisServer {
         return this.running;
     }
 
+    public void close() {
+        this.stop();
+    }
+
     public void stop() {
-        this.running = false;
-        try {
-            getServer().close();
-        } catch (Exception e) {
-            log.error("Failed to close socket server", e);
-            throw new IllegalStateException(e);
+        if (this.running) {
+            this.running = false;
+            try {
+                getServer().close();
+            } catch (Exception e) {
+                log.error("Failed to close socket server", e);
+                throw new IllegalStateException(e);
+            }
         }
     }
 

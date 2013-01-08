@@ -102,10 +102,8 @@ public class JacksonJsonBinder implements JsonBinder {
 
             Map<String,Object> data = new HashMap<String, Object>();
 
-            if ( clusterStatus.getMaster() != null ) {
+            if ( clusterStatus.hasMaster() ) {
                 data.put(MASTER, clusterStatus.getMaster().asHost());
-            } else {
-                data.put(MASTER, null);
             }
 
             List<String> slaves = new ArrayList<String>();
@@ -134,15 +132,21 @@ public class JacksonJsonBinder implements JsonBinder {
     public ClusterStatus toClusterStatus(final byte[] data) {
 
         try {
+
             JsonNode node = mapper.readTree(data);
 
             HostConfiguration master = null;
 
-            JsonNode masterNode = node.get( MASTER );
+            if ( node.has(MASTER) ) {
 
-            if ( masterNode != null ) {
-                String[] paths = masterNode.asText().split(":");
-                master = new HostConfiguration( paths[0], Integer.valueOf( paths[1] ) );
+                JsonNode masterNode = node.get(MASTER);
+
+                if ( masterNode != null
+                        || !masterNode.isNull() ) {
+                    String[] paths = masterNode.asText().split(":");
+                    master = new HostConfiguration( paths[0], Integer.valueOf( paths[1] ) );
+                }
+
             }
 
             List<HostConfiguration> slaves = this.toConfigurations(node.get(SLAVES));
