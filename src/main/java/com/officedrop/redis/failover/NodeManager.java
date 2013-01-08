@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
  * Date: 1/3/13
  * Time: 9:02 AM
  */
-public class NodeManager implements NodeListener {
+public class NodeManager implements NodeListener, ClusterChangeEventSource {
 
     private static final Logger log = LoggerFactory.getLogger(NodeManager.class);
 
@@ -115,6 +115,10 @@ public class NodeManager implements NodeListener {
 
     public void addListeners(NodeManagerListener... listeners) {
         this.listeners.addAll(Arrays.asList(listeners));
+    }
+
+    public void removeListeners( NodeManagerListener ... listeners ) {
+        this.listeners.removeAll(Arrays.asList(listeners));
     }
 
     private void nodeStatusesChanged(Map<String, Map<HostConfiguration, NodeState>> nodesData) {
@@ -237,7 +241,7 @@ public class NodeManager implements NodeListener {
     private void fireSlaveChangedEvent(ClusterStatus status) {
         for (NodeManagerListener listener : this.listeners) {
             try {
-                listener.masterChanged(this, status);
+                listener.slavesChanged(this, status);
             } catch (Exception e) {
                 log.error("Failed to send event to listener", e);
             }

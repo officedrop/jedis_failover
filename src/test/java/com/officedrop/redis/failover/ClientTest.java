@@ -6,6 +6,7 @@ import junit.framework.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.Mockito.*;
@@ -20,7 +21,7 @@ public class ClientTest {
     @Test
     public void testCreateClient() throws Exception {
 
-        ZooKeeperClient zooKeeperClient = mock(ZooKeeperClient.class );
+        ClusterChangeEventSource nodeManager = mock(ClusterChangeEventSource.class );
 
         JedisClient masterClient = mock(JedisClient.class);
         JedisClient slaveClient1 = mock(JedisClient.class);
@@ -31,8 +32,9 @@ public class ClientTest {
         HostConfiguration master = new HostConfiguration("localhost", 6000);
         List<HostConfiguration> slaves = Arrays.asList( new HostConfiguration("localhost", 6001), new HostConfiguration("localhost", 6002) );
 
-        when(zooKeeperClient.getMaster()).thenReturn(master);
-        when(zooKeeperClient.getSlaves() ).thenReturn(slaves);
+        ClusterStatus status = new ClusterStatus( master, slaves, Collections.EMPTY_LIST );
+
+        when(nodeManager.getLastClusterStatus()).thenReturn(status);
 
         when( factory.create(master) ).thenReturn(masterClient);
         when( factory.create(slaves.get(0)) ).thenReturn(slaveClient1);
@@ -42,7 +44,7 @@ public class ClientTest {
         when( slaveClient1.get("some-key") ).thenReturn("some-value");
         when( slaveClient2.get("some-other-key")).thenReturn("some-other-value");
 
-        Client client = new Client(zooKeeperClient, factory);
+        Client client = new Client(nodeManager, factory);
 
         client.set("some-key", "some-value");
 

@@ -10,7 +10,6 @@ import redis.clients.jedis.BinaryClient;
 import redis.clients.jedis.SortingParams;
 import redis.clients.jedis.Tuple;
 
-import java.io.IOException;
 import java.util.*;
 
 /**
@@ -22,12 +21,12 @@ public class Client implements JedisClient, NodeManagerListener {
 
     private static final Logger log = LoggerFactory.getLogger(Client.class);
 
-    private NodeManager nodeManager;
+    private ClusterChangeEventSource nodeManager;
     private JedisClientFactory factory;
     private JedisClient master;
     private CircularList<JedisClient> slaves;
 
-    public Client(NodeManager nodeManager, JedisClientFactory factory) {
+    public Client(ClusterChangeEventSource nodeManager, JedisClientFactory factory) {
         this.factory = factory;
         this.nodeManager = nodeManager;
 
@@ -99,6 +98,9 @@ public class Client implements JedisClient, NodeManagerListener {
     public String quit() {
         this.quitMaster();
         this.quitSlaves();
+
+        this.nodeManager.removeListeners( this );
+
         return "OK";
     }
 
