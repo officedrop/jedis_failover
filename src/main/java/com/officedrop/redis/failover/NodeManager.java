@@ -26,7 +26,7 @@ public class NodeManager implements NodeListener {
     private final Collection<HostConfiguration> redisServers;
     private final JedisClientFactory factory;
     private final ExecutorService threadPool;
-    private final List<Node> nodes = new CopyOnWriteArrayList<Node>();
+    private final Set<Node> nodes = new HashSet<Node>();
     private final FailoverSelectionStrategy failoverStrategy;
     private final FailureDetectionStrategy failureDetectionStatery;
     private final long nodeSleepTimeout;
@@ -51,7 +51,7 @@ public class NodeManager implements NodeListener {
             int nodeRetries
     ) {
         this.zooKeeperClient = zooKeeperClient;
-        this.redisServers = redisServers;
+        this.redisServers = new HashSet<HostConfiguration>(redisServers);
         this.factory = factory;
         this.threadPool = threadPool;
         this.nodeSleepTimeout = nodeSleepTimeout;
@@ -243,7 +243,7 @@ public class NodeManager implements NodeListener {
             this.running = true;
 
             while ( this.running && this.reportedNodes.size() != this.nodes.size() ) {
-                log.info("Waiting for all nodes to report {} ({})", this.reportedNodes.size(), this.nodes.size());
+                log.info("Waiting for all nodes to report {} ({}) - {} - {}", this.reportedNodes.size(), this.nodes.size(), this.nodes, this.reportedNodes);
                 SleepUtils.safeSleep( this.nodeSleepTimeout, TimeUnit.MILLISECONDS);
             }
 
@@ -351,7 +351,7 @@ public class NodeManager implements NodeListener {
 
             for ( Node node : this.nodes ) {
                 if ( this.lastClusterStatus.getSlaves().contains( node.getHostConfiguration() ) ) {
-                    if (!node.getMasterConfiguration().equals( this.lastClusterStatus.getMaster() ) ) {
+                    if ( node.getMasterConfiguration() == null || !node.getMasterConfiguration().equals( this.lastClusterStatus.getMaster() ) ) {
                         node.makeSlaveOf( this.lastClusterStatus.getMaster().getHost(), this.lastClusterStatus.getMaster().getPort() );
                     }
                 }

@@ -16,10 +16,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.Closeable;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -215,9 +212,89 @@ public class NodeManagerTest {
         for ( NodeManager manager : managers ) {
             manager.stop();
         }
-
     }
 
+    @Test
+    public void testWithDataAlreadyAvailable() {
+        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+
+        ClusterStatus status = new ClusterStatus(
+                masterRedis.getHostConfiguration(),
+                Arrays.asList( slaveRedis1.getHostConfiguration(), slaveRedis2.getHostConfiguration() ),
+                Collections.EMPTY_LIST );
+
+        zooKeeper.setClusterData(status);
+
+        masterRedis.close();
+
+        NodeManager manager = create();
+        manager.start();
+
+        SleepUtils.waitUntil(5000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return !status.getUnavailables().isEmpty();
+            }
+        });
+
+        ClusterStatus currentStatus = zooKeeper.getClusterData();
+
+        Assert.assertEquals( masterRedis.getHostConfiguration(), currentStatus.getUnavailables().iterator().next() );
+        Assert.assertEquals( 1, currentStatus.getUnavailables().size() );
+
+        if ( currentStatus.getMaster().equals(slaveRedis1.getHostConfiguration()) ) {
+            Assert.assertEquals( slaveRedis2.getHostConfiguration(), currentStatus.getSlaves().iterator().next() );
+        } else {
+            Assert.assertEquals( slaveRedis2.getHostConfiguration(), currentStatus.getMaster() );
+            Assert.assertEquals( slaveRedis1.getHostConfiguration(), currentStatus.getSlaves().iterator().next() );
+        }
+
+        manager.stop();
+    }
+
+    @Test
+    public void testGrabMachineThatCameBackAsSlave() {
+        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+
+        ClusterStatus status = new ClusterStatus(
+                masterRedis.getHostConfiguration(),
+                Arrays.asList( slaveRedis1.getHostConfiguration(), slaveRedis2.getHostConfiguration() ),
+                Collections.EMPTY_LIST );
+
+        zooKeeper.setClusterData(status);
+
+        masterRedis.close();
+
+        NodeManager manager = create();
+        manager.start();
+
+        SleepUtils.waitUntil(5000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return !status.getUnavailables().isEmpty();
+            }
+        });
+
+        masterRedis = new RedisServer(masterRedis.getHostConfiguration().getHost(), masterRedis.getPort());
+        masterRedis.start();
+
+        SleepUtils.waitUntil( 10000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return status.getUnavailables().isEmpty();
+            }
+        } );
+
+        ClusterStatus currentStatus = zooKeeper.getClusterData();
+
+        Assert.assertTrue( currentStatus.getSlaves().contains(masterRedis.getHostConfiguration()) );
+        Assert.assertEquals( currentStatus.getMaster(), masterRedis.getMasterConfiguration() );
+
+        manager.stop();
+    }
 
     private void close( Closeable ... closeables ) {
         for ( Closeable c : closeables ) {
