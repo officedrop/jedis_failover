@@ -73,19 +73,6 @@ public class NodeManager implements NodeListener {
         this.zooKeeperClient.addEventListeners(new ZooKeeperEventListener() {
             @Override
             public void nodesDataChanged(final ZooKeeperClient client, final String nodeId, final Map<String, Map<HostConfiguration, NodeState>> nodesData) {
-
-                /*
-                if (client.hasLeadership() && NodeManager.this.running ) {
-                    NodeManager.this.threadPool.submit( new Runnable() {
-                        @Override
-                        public void run() {
-                            log.info("Node status has changed - {}", nodeId);
-                            nodeStatusesChanged(nodesData);
-                        }
-                    } );
-                }
-                */
-
             }
 
             @Override
@@ -94,7 +81,7 @@ public class NodeManager implements NodeListener {
                     NodeManager.this.threadPool.submit( new Runnable() {
                         @Override
                         public void run() {
-                            log.info("Cluster status has changed");
+                            log.info("Cluster status has changed - {}", clusterStatus);
                             clusterStatusChanged(clusterStatus);
                         }
                     } );
@@ -204,13 +191,15 @@ public class NodeManager implements NodeListener {
             }
         }
 
-        NodeManager.this.lastClusterStatus = clusterStatus;
+        this.lastClusterStatus = clusterStatus;
 
-        if ( !clusterStatus.hasMaster() ) {
-            throw new IllegalArgumentException("There has to be a master before setting the cluster configuration");
+        if ( this.zooKeeperClient.hasLeadership() ) {
+            if ( !clusterStatus.hasMaster() ) {
+                throw new IllegalArgumentException("There has to be a master before setting the cluster configuration");
+            }
+
+            this.zooKeeperClient.setClusterData(clusterStatus);
         }
-
-        this.zooKeeperClient.setClusterData(clusterStatus);
     }
 
     private void fireMasterChangedEvent(ClusterStatus status) {

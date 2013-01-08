@@ -140,20 +140,21 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
         log.info("Closking ZookeeperNetworkClient");
         if ( !this.closed ) {
             this.closed = true;
-            this.close(this.clusterDataCache);
-            this.close( this.leaderLatch );
-            this.close( this.nodesDataCache );
-            this.close( this.curator );
+            this.close(this.clusterDataCache, this.leaderLatch, this.nodesDataCache, this.curator);
         }
     }
 
-    private void close ( Closeable closeable) {
-        try {
-            closeable.close();
-        } catch ( Exception e ) {
-            log.error(String.format("Failed to close %s", closeable), e);
-            throw new ZooKeeperException(e);
+    private void close ( Closeable ... closables) {
+
+        for ( Closeable closeable : closables ) {
+            try {
+                closeable.close();
+            } catch ( Exception e ) {
+                log.error(String.format("Failed to close %s", closeable), e);
+                throw new ZooKeeperException(e);
+            }
         }
+
     }
 
     private void createOrSet(String path, byte[] data, CreateMode mode) {

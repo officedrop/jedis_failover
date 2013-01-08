@@ -139,7 +139,9 @@ public class NodeManagerTest {
         Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
         slaves.add( hosts.get(1) );
 
-        List<NodeManager> managers = Arrays.asList( create(), create());
+        ZooKeeperClient client = new ZooKeeperNetworkClient(server.getConnectString());
+
+        List<NodeManager> managers = Arrays.asList( create(), create(client));
 
         SleepUtils.waitUntil(5000, new Function<Boolean>() {
             @Override
@@ -151,7 +153,7 @@ public class NodeManagerTest {
 
         slaveRedis2.stop();
 
-        SleepUtils.waitUntil(5000, new Function<Boolean>() {
+        SleepUtils.waitUntil(10000, new Function<Boolean>() {
             @Override
             public Boolean apply() {
                 ClusterStatus status = zooKeeper.getClusterData();
@@ -170,15 +172,62 @@ public class NodeManagerTest {
 
     }
 
+    @Test
+    public void testWithMasterFailing() {
+
+        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+
+        Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
+        slaves.add( hosts.get(1) );
+
+        List<NodeManager> managers = Arrays.asList( create());
+
+        SleepUtils.waitUntil(5000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return !status.isEmpty();
+            }
+        });
+
+        masterRedis.close();
+
+        SleepUtils.waitUntil(10000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                ClusterStatus status = zooKeeper.getClusterData();
+                return !status.getUnavailables().isEmpty();
+            }
+        });
+
+        ClusterStatus status = zooKeeper.getClusterData();
+
+        Assert.assertTrue(status.hasMaster());
+        Assert.assertEquals( 1, slaves.size() );
+        Assert.assertEquals( masterRedis.getHostConfiguration(), status.getUnavailables().iterator().next() );
+
+        if ( status.getMaster().equals(slaveRedis1.getHostConfiguration()) ) {
+            Assert.assertEquals( slaveRedis1.getHostConfiguration(), slaveRedis2.getMasterConfiguration() );
+        } else {
+            Assert.assertEquals( slaveRedis2.getHostConfiguration(), slaveRedis1.getMasterConfiguration() );
+        }
+
+        for ( NodeManager manager : managers ) {
+            manager.stop();
+        }
+
+    }
+
+
     private void close( Closeable ... closeables ) {
         for ( Closeable c : closeables ) {
             IOUtils.closeQuietly(c);
         }
     }
 
-    private NodeManager create() {
+    private NodeManager create( ZooKeeperClient client ) {
         NodeManager manager =  new NodeManager(
-                zooKeeper,
+                client,
                 hosts,
                 GenericJedisClientFactory.INSTANCE,
                 ThreadPool.POOL,
@@ -190,6 +239,10 @@ public class NodeManagerTest {
         manager.start();
 
         return manager;
+    }
+
+    private NodeManager create() {
+        return create(zooKeeper);
     }
 
 }

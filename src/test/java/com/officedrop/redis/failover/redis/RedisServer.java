@@ -152,6 +152,10 @@ public class RedisServer implements Closeable {
         return new HostConfiguration(this.address, this.port);
     }
 
+    public HostConfiguration getMasterConfiguration() {
+        return new HostConfiguration( this.masterHost, Integer.valueOf(this.masterPort) );
+    }
+
     public static void withServer(Action1<RedisServer> action) {
         RedisServer server = new RedisServer("localhost", PORT.incrementAndGet());
 
