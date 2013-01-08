@@ -12,7 +12,6 @@ import com.officedrop.redis.failover.utils.JacksonJsonBinder;
 import com.officedrop.redis.failover.utils.JsonBinder;
 import com.officedrop.redis.failover.utils.PathUtils;
 import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,7 +67,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
             this.clusterDataCache.getListenable().addListener(this);
             this.clusterDataCache.start(true);
 
-            this.leaderLatch = new LeaderLatch( this.curator, LEADER_MUTEX, UUID.randomUUID().toString() );
+            this.leaderLatch = new LeaderLatch(this.curator, LEADER_MUTEX, UUID.randomUUID().toString());
             this.leaderLatch.start();
         } catch (Exception e) {
             throw new ZooKeeperException(e);
@@ -90,8 +89,8 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
     }
 
     @Override
-    public void waitUntilLeader( long timeout, TimeUnit unit) throws InterruptedException {
-        this.leaderLatch.await( timeout, unit );
+    public void waitUntilLeader(long timeout, TimeUnit unit) throws InterruptedException {
+        this.leaderLatch.await(timeout, unit);
     }
 
     @Override
@@ -115,7 +114,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
         try {
             byte[] data = this.clusterDataCache.getCurrentData().getData();
 
-            if (data != null || data.length != 0) {
+            if (data != null && data.length != 0) {
                 return this.jsonBinder.toClusterStatus(data);
             } else {
                 return new ClusterStatus(null, Collections.EMPTY_LIST, Collections.EMPTY_LIST);
@@ -132,9 +131,10 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
 
     public void close() {
         try {
+            log.info("Closking ZookeeperNetworkClient");
             this.clusterDataCache.close();
-            this.nodesDataCache.close();
             this.leaderLatch.close();
+            this.nodesDataCache.close();
             this.curator.close();
         } catch (Exception e) {
             throw new ZooKeeperException(e);
@@ -143,14 +143,17 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
 
     private void createOrSet(String path, byte[] data, CreateMode mode) {
         try {
-            try {
-                this.curator.create()
-                        .creatingParentsIfNeeded()
-                        .withMode(mode)
-                        .forPath(path, data);
-            } catch (KeeperException.NodeExistsException e) {
-                this.curator.setData().forPath(path, data);
+            synchronized ( this.curator ) {
+                if (this.curator.checkExists().forPath(path) != null) {
+                    this.curator.setData().forPath(path, data);
+                } else {
+                    this.curator.create()
+                            .creatingParentsIfNeeded()
+                            .withMode(mode)
+                            .forPath(path, data);
+                }
             }
+
         } catch (Exception e) {
             throw new ZooKeeperException(e);
         }
@@ -175,10 +178,10 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
             case CHILD_REMOVED:
             case CHILD_UPDATED:
 
-                Map<String,Map<HostConfiguration,NodeState>> states = this.getNodeDatas();
+                Map<String, Map<HostConfiguration, NodeState>> states = this.getNodeDatas();
 
-                for ( ZooKeeperEventListener listener : this.listeners ) {
-                    listener.nodesDataChanged(this, states);
+                for (ZooKeeperEventListener listener : this.listeners) {
+                    listener.nodesDataChanged(this, ZKPaths.getNodeFromPath(pathChildrenCacheEvent.getData().getPath()), states);
                 }
 
                 break;
@@ -187,15 +190,15 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
     }
 
     @Override
-    public Map<String,Map<HostConfiguration,NodeState>> getNodeDatas() {
-        Map<String,Map<HostConfiguration,NodeState>> states = new HashMap<String, Map<HostConfiguration, NodeState>>();
+    public Map<String, Map<HostConfiguration, NodeState>> getNodeDatas() {
+        Map<String, Map<HostConfiguration, NodeState>> states = new HashMap<String, Map<HostConfiguration, NodeState>>();
 
         for (ChildData data : this.nodesDataCache.getCurrentData()) {
             byte[] nodeData = data.getData();
 
-            if ( nodeData != null && nodeData.length > 0 ) {
-                String node = ZKPaths.getNodeFromPath( data.getPath() );
-                states.put( node, this.jsonBinder.toNodeState(nodeData) );
+            if (nodeData != null && nodeData.length > 0) {
+                String node = ZKPaths.getNodeFromPath(data.getPath());
+                states.put(node, this.jsonBinder.toNodeState(nodeData));
             }
         }
 

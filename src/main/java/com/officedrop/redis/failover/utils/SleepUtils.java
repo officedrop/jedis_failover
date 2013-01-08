@@ -24,4 +24,19 @@ public class SleepUtils {
 
     }
 
+    public static final void waitUntil( long millis, Function<Boolean> waiter ) {
+
+        long totalSlept = 0;
+
+        while ( totalSlept <= millis && !waiter.apply() ) {
+            safeSleep(1, TimeUnit.SECONDS);
+            totalSlept += 1000;
+        }
+
+        if ( !waiter.apply() ) {
+            throw new IllegalStateException("Execution of loop timed out");
+        }
+
+    }
+
 }

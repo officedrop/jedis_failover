@@ -89,7 +89,7 @@ public class RedisServer {
 
         this.running = true;
 
-        log.debug("started server");
+        log.info("started server - {}:{}", this.getAddress(), this.getPort());
 
         Thread acceptor = new Thread(new Runnable() {
             @Override
@@ -99,7 +99,7 @@ public class RedisServer {
                     try {
                         final Socket socket = getServer().accept();
 
-                        log.debug("Accepted client {}", socket.getInetAddress());
+                        log.info("Accepted client {}", socket.getInetAddress());
 
                         RedisClientHandler handler = new RedisClientHandler(RedisServer.this, socket);
 

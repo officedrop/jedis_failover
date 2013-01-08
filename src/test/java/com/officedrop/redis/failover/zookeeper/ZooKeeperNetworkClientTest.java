@@ -67,7 +67,7 @@ public class ZooKeeperNetworkClientTest {
 
         client.addEventListeners(new ZooKeeperEventListener() {
             @Override
-            public void nodesDataChanged(final ZooKeeperClient client, final Map<String, Map<HostConfiguration, NodeState>> nodesData) {
+            public void nodesDataChanged(final ZooKeeperClient client, final String nodeId, final Map<String, Map<HostConfiguration, NodeState>> nodesData) {
                 try {
 
                     log.debug("Received event with data {}", nodesData);

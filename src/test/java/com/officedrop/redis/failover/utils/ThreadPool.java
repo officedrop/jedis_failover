@@ -10,7 +10,7 @@ import java.util.concurrent.Executors;
  */
 public class ThreadPool {
 
-    private static final ExecutorService POOL = Executors.newCachedThreadPool();
+    public static final ExecutorService POOL = Executors.newCachedThreadPool();
 
     public static void submit( Runnable r ) {
         POOL.submit(r);

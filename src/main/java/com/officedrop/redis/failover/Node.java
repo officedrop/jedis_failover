@@ -62,6 +62,8 @@ public class Node {
     public void start() {
         this.shutdown = false;
 
+        log.info("Starting node {}", this.getHostConfiguration());
+
         while (!this.shutdown) {
             try {
                 long latency = Benchmarker.benchmark(new Action() {

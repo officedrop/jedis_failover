@@ -37,6 +37,7 @@ public class NodeManager implements NodeListener {
     private volatile Map<String, Map<HostConfiguration, NodeState>> lastNodesData;
     private final Object mutex = new Object();
     private final List<NodeManagerListener> listeners = new CopyOnWriteArrayList<NodeManagerListener>();
+    private final Set<HostConfiguration> reportedNodes = Collections.synchronizedSet(new HashSet<HostConfiguration>());
 
     public NodeManager(
             ZooKeeperClient zooKeeperClient,
@@ -70,12 +71,13 @@ public class NodeManager implements NodeListener {
 
         this.zooKeeperClient.addEventListeners(new ZooKeeperEventListener() {
             @Override
-            public void nodesDataChanged(final ZooKeeperClient client, final Map<String, Map<HostConfiguration, NodeState>> nodesData) {
+            public void nodesDataChanged(final ZooKeeperClient client, final String nodeId, final Map<String, Map<HostConfiguration, NodeState>> nodesData) {
 
-                if (client.hasLeadership() ) {
+                if (client.hasLeadership() && !nodeName.equals(nodeId) ) {
                     NodeManager.this.threadPool.submit( new Runnable() {
                         @Override
                         public void run() {
+                            log.info("Node status has changed - {}", nodeId);
                             nodeStatusesChanged(nodesData);
                         }
                     } );
@@ -88,6 +90,7 @@ public class NodeManager implements NodeListener {
                 NodeManager.this.threadPool.submit( new Runnable() {
                     @Override
                     public void run() {
+                        log.info("Cluster status has changed");
                         clusterStatusChanged(clusterStatus);
                     }
                 } );
@@ -179,6 +182,7 @@ public class NodeManager implements NodeListener {
         }
 
         NodeManager.this.lastClusterStatus = clusterStatus;
+        this.zooKeeperClient.setClusterData(clusterStatus);
     }
 
     private void fireMasterChangedEvent(ClusterStatus status) {
@@ -217,12 +221,31 @@ public class NodeManager implements NodeListener {
 
         this.lastClusterStatus = this.zooKeeperClient.getClusterData();
 
+        this.running = true;
+
+        while ( this.running && this.reportedNodes.size() != this.nodes.size() ) {
+            log.info("Waiting for all nodes to report {} ({})", this.reportedNodes.size(), this.nodes.size());
+            SleepUtils.safeSleep( this.nodeSleepTimeout, TimeUnit.MILLISECONDS);
+        }
+
+        this.threadPool.submit( new Runnable() {
+            @Override
+            public void run() {
+                   masterLoop();
+            }
+        } );
+    }
+
+    private void masterLoop() {
         while (this.running) {
             try {
 
                 if (!this.zooKeeperClient.hasLeadership()) {
+                    log.info("Trying to acquire redis failover cluster leadership");
                     this.zooKeeperClient.waitUntilLeader(5, TimeUnit.SECONDS);
+                    log.info("Node manager {} became master of the redis failover cluster", this.nodeName);
                 } else {
+                    log.info("Last cluster status is {}", this.lastClusterStatus);
                     if (this.lastClusterStatus.isEmpty()) {
                         electMaster();
                     } else {
@@ -238,10 +261,12 @@ public class NodeManager implements NodeListener {
                 SleepUtils.safeSleep(5, TimeUnit.SECONDS);
             }
         }
-
     }
 
     private void electMaster() {
+
+        log.info("Electing master on empty cluster configuration");
+
         Node master = null;
 
         for (Node node : this.nodes) {
@@ -259,19 +284,32 @@ public class NodeManager implements NodeListener {
             throw new NodeManagerException( "No node is configured as master and I have no information on who was the previous master" );
         }
 
+        log.info("Node {} is the master of the current cluster configuration", master.getHostConfiguration());
+
+        List<HostConfiguration> slaves = new ArrayList<HostConfiguration>();
+        List<HostConfiguration> unavailable = new ArrayList<HostConfiguration>();
+
         for (Node node : this.nodes) {
             if (!node.equals(master)) {
                 try {
                     node.makeSlaveOf(master.getHostConfiguration().getHost(), master.getHostConfiguration().getPort());
+                    slaves.add(node.getHostConfiguration());
                 } catch ( Exception e ) {
+                    unavailable.add(node.getHostConfiguration());
                     log.error("Failed to set node to be slave of current master");
                 }
             }
         }
 
+        ClusterStatus status = new ClusterStatus( master.getHostConfiguration(), slaves, unavailable );
+
+        this.fireClusterStatusChanged(status);
+
     }
 
     private void reconcile() {
+
+        log.info("Reconciling cluster configuration");
 
         HostConfiguration configuration = this.lastClusterStatus.getMaster();
 
@@ -290,11 +328,17 @@ public class NodeManager implements NodeListener {
     @Override
     public void nodeIsOnline(final Node node, final long latency) {
         this.publishNodeState();
+        if ( this.reportedNodes.size() != this.nodes.size() ) {
+            this.reportedNodes.add(node.getHostConfiguration());
+        }
     }
 
     @Override
     public void nodeIsOffline(final Node node, final Exception e) {
         this.publishNodeState();
+        if ( this.reportedNodes.size() != this.nodes.size() ) {
+            this.reportedNodes.add(node.getHostConfiguration());
+        }
     }
 
     private void publishNodeState() {

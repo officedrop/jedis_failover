@@ -84,4 +84,13 @@ public class ClusterStatus {
         result = 31 * result + unavailables.hashCode();
         return result;
     }
+
+    @Override
+    public String toString() {
+        return "ClusterStatus{" +
+                "master=" + master +
+                ", slaves=" + slaves +
+                ", unavailables=" + unavailables +
+                '}';
+    }
 }
