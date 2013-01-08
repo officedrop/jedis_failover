@@ -1,9 +1,13 @@
 package com.officedrop.redis.failover;
 
+import com.officedrop.redis.failover.jedis.GenericJedisClientFactory;
 import com.officedrop.redis.failover.jedis.JedisClientFactory;
 import com.officedrop.redis.failover.strategy.FailoverSelectionStrategy;
 import com.officedrop.redis.failover.strategy.FailureDetectionStrategy;
+import com.officedrop.redis.failover.strategy.LatencyFailoverSelectionStrategy;
+import com.officedrop.redis.failover.strategy.SimpleMajorityStrategy;
 import com.officedrop.redis.failover.utils.SleepUtils;
+import com.officedrop.redis.failover.zookeeper.ZooKeeperNetworkClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +15,7 @@ import java.net.Inet4Address;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -34,7 +39,7 @@ public class NodeManager implements NodeListener {
     private final String nodeName;
     private volatile boolean running;
     private volatile ClusterStatus lastClusterStatus;
-    private volatile Map<HostConfiguration,NodeState> currentNodesState;
+    private volatile Map<HostConfiguration, NodeState> currentNodesState;
     private volatile Map<String, Map<HostConfiguration, NodeState>> lastNodesData;
     private final Object mutex = new Object();
     private final List<NodeManagerListener> listeners = new CopyOnWriteArrayList<NodeManagerListener>();
@@ -77,29 +82,46 @@ public class NodeManager implements NodeListener {
 
             @Override
             public void clusterDataChanged(final ZooKeeperClient client, final ClusterStatus clusterStatus) {
-                if ( NodeManager.this.running ) {
-                    NodeManager.this.threadPool.submit( new Runnable() {
+                if (NodeManager.this.running) {
+                    NodeManager.this.threadPool.submit(new Runnable() {
                         @Override
                         public void run() {
                             log.info("Cluster status has changed - {}", clusterStatus);
                             clusterStatusChanged(clusterStatus);
                         }
-                    } );
+                    });
                 }
             }
         });
 
     }
 
+    public NodeManager(String zooKeeperUrl, Collection<HostConfiguration> redisServers) {
+        this(
+                new ZooKeeperNetworkClient(zooKeeperUrl),
+                redisServers,
+                GenericJedisClientFactory.INSTANCE,
+                Executors.newCachedThreadPool(),
+                LatencyFailoverSelectionStrategy.INSTANCE,
+                SimpleMajorityStrategy.INSTANCE,
+                5000,
+                3
+        );
+    }
+
+    public ClusterStatus getLastClusterStatus() {
+        return this.lastClusterStatus;
+    }
+
     public void addListeners(NodeManagerListener... listeners) {
         this.listeners.addAll(Arrays.asList(listeners));
     }
 
-    private void nodeStatusesChanged( Map<String, Map<HostConfiguration, NodeState>> nodesData ) {
+    private void nodeStatusesChanged(Map<String, Map<HostConfiguration, NodeState>> nodesData) {
 
         synchronized (this.mutex) {
 
-            if ( this.lastNodesData == null || !nodesData.equals(this.lastNodesData) ) {
+            if (this.lastNodesData == null || !nodesData.equals(this.lastNodesData)) {
 
                 log.info("Nodes data has changed, checking if we have differences in the cluster \n{}\n{}", this.lastNodesData, nodesData);
 
@@ -108,12 +130,12 @@ public class NodeManager implements NodeListener {
                 Collection<HostConfiguration> available = new ArrayList<HostConfiguration>();
                 Collection<HostConfiguration> unavailable = new ArrayList<HostConfiguration>();
 
-                Map<HostConfiguration,Collection<NodeState>> statusByNode = this.toStatusByNode(nodesData);
+                Map<HostConfiguration, Collection<NodeState>> statusByNode = this.toStatusByNode(nodesData);
 
-                for ( Map.Entry<HostConfiguration,Collection<NodeState>> nodeStates : statusByNode.entrySet() ) {
-                    boolean isAvailable = this.failureDetectionStatery.isAvailable( nodeStates.getKey(), nodeStates.getValue() );
+                for (Map.Entry<HostConfiguration, Collection<NodeState>> nodeStates : statusByNode.entrySet()) {
+                    boolean isAvailable = this.failureDetectionStatery.isAvailable(nodeStates.getKey(), nodeStates.getValue());
 
-                    if ( !isAvailable ) {
+                    if (!isAvailable) {
                         log.info("{} is not available", nodeStates.getKey());
                         unavailable.add(nodeStates.getKey());
                     } else {
@@ -125,19 +147,19 @@ public class NodeManager implements NodeListener {
                 HostConfiguration newMaster = null;
                 boolean slavesChanged = false;
 
-                if ( this.lastClusterStatus.hasMaster() && unavailable.contains(this.lastClusterStatus.getMaster()) ) {
-                    newMaster = this.failoverStrategy.selectMaster( new HashSet<HostConfiguration>(available), nodesData );
-                    available.remove( newMaster );
+                if (this.lastClusterStatus.hasMaster() && unavailable.contains(this.lastClusterStatus.getMaster())) {
+                    newMaster = this.failoverStrategy.selectMaster(new HashSet<HostConfiguration>(available), nodesData);
+                    available.remove(newMaster);
                 } else {
-                    available.remove( this.lastClusterStatus.getMaster() );
+                    available.remove(this.lastClusterStatus.getMaster());
                 }
 
-                if ( !this.lastClusterStatus.getSlaves().equals( available ) ) {
+                if (!this.lastClusterStatus.getSlaves().equals(available)) {
                     slavesChanged = true;
                 }
 
-                if ( newMaster != null || slavesChanged ) {
-                    ClusterStatus status = new ClusterStatus( newMaster != null ? newMaster : this.lastClusterStatus.getMaster(), available, unavailable );
+                if (newMaster != null || slavesChanged) {
+                    ClusterStatus status = new ClusterStatus(newMaster != null ? newMaster : this.lastClusterStatus.getMaster(), available, unavailable);
                     this.fireClusterStatusChanged(status);
                 }
 
@@ -148,14 +170,14 @@ public class NodeManager implements NodeListener {
 
     }
 
-    private Map<HostConfiguration,Collection<NodeState>> toStatusByNode( Map<String, Map<HostConfiguration, NodeState>> nodesData ) {
-        Map<HostConfiguration,Collection<NodeState>> statusByNode = new HashMap<HostConfiguration, Collection<NodeState>>();
+    private Map<HostConfiguration, Collection<NodeState>> toStatusByNode(Map<String, Map<HostConfiguration, NodeState>> nodesData) {
+        Map<HostConfiguration, Collection<NodeState>> statusByNode = new HashMap<HostConfiguration, Collection<NodeState>>();
 
-        for ( Map<HostConfiguration,NodeState> entry : nodesData.values() ) {
-            for ( Map.Entry<HostConfiguration,NodeState> state : entry.entrySet() ) {
-                Collection<NodeState> nodeStates = statusByNode.get( state.getKey() );
+        for (Map<HostConfiguration, NodeState> entry : nodesData.values()) {
+            for (Map.Entry<HostConfiguration, NodeState> state : entry.entrySet()) {
+                Collection<NodeState> nodeStates = statusByNode.get(state.getKey());
 
-                if ( nodeStates == null ) {
+                if (nodeStates == null) {
                     nodeStates = new ArrayList<NodeState>();
                     statusByNode.put(state.getKey(), nodeStates);
                 }
@@ -167,7 +189,7 @@ public class NodeManager implements NodeListener {
         return statusByNode;
     }
 
-    private void clusterStatusChanged( ClusterStatus clusterStatus ) {
+    private void clusterStatusChanged(ClusterStatus clusterStatus) {
         synchronized (this.mutex) {
             if (!this.zooKeeperClient.hasLeadership()) {
                 this.fireClusterStatusChanged(clusterStatus);
@@ -175,7 +197,7 @@ public class NodeManager implements NodeListener {
         }
     }
 
-    private void fireClusterStatusChanged( ClusterStatus clusterStatus ) {
+    private void fireClusterStatusChanged(ClusterStatus clusterStatus) {
         if (NodeManager.this.lastClusterStatus != null) {
             switch (NodeManager.this.lastClusterStatus.difference(clusterStatus)) {
                 case BOTH:
@@ -193,8 +215,8 @@ public class NodeManager implements NodeListener {
 
         this.lastClusterStatus = clusterStatus;
 
-        if ( this.zooKeeperClient.hasLeadership() ) {
-            if ( !clusterStatus.hasMaster() ) {
+        if (this.zooKeeperClient.hasLeadership()) {
+            if (!clusterStatus.hasMaster()) {
                 throw new IllegalArgumentException("There has to be a master before setting the cluster configuration");
             }
 
@@ -242,20 +264,20 @@ public class NodeManager implements NodeListener {
 
             this.running = true;
 
-            while ( this.running && this.reportedNodes.size() != this.nodes.size() ) {
+            while (this.running && this.reportedNodes.size() != this.nodes.size()) {
                 log.info("Waiting for all nodes to report {} ({}) - {} - {}", this.reportedNodes.size(), this.nodes.size(), this.nodes, this.reportedNodes);
-                SleepUtils.safeSleep( this.nodeSleepTimeout, TimeUnit.MILLISECONDS);
+                SleepUtils.safeSleep(this.nodeSleepTimeout, TimeUnit.MILLISECONDS);
             }
 
             log.info("All nodes reported, starting leader election loop - {}", this.toNodeStates());
         }
 
-        this.threadPool.submit( new Runnable() {
+        this.threadPool.submit(new Runnable() {
             @Override
             public void run() {
-                   masterLoop();
+                masterLoop();
             }
-        } );
+        });
     }
 
     private void masterLoop() {
@@ -269,14 +291,14 @@ public class NodeManager implements NodeListener {
                 } else {
                     log.info("Last cluster status is {}", this.lastClusterStatus);
                     synchronized (this.mutex) {
-                        if (this.lastClusterStatus.isEmpty()  || !this.lastClusterStatus.hasMaster()) {
+                        if (this.lastClusterStatus.isEmpty() || !this.lastClusterStatus.hasMaster()) {
                             electMaster();
                         } else {
                             reconcile();
                         }
                     }
                 }
-            } catch ( NodeManagerException e ) {
+            } catch (NodeManagerException e) {
                 log.error("Failed to boot the NodeManager, giving up execution", e);
                 throw new IllegalStateException(e);
             } catch (Exception e) {
@@ -299,13 +321,13 @@ public class NodeManager implements NodeListener {
                     master = node;
                     break;
                 }
-            } catch ( Exception e ) {
+            } catch (Exception e) {
                 log.error("Failed to check if node is master", e);
             }
         }
 
-        if ( master == null ) {
-            throw new NodeManagerException( "No node is configured as master and I have no information on who was the previous master" );
+        if (master == null) {
+            throw new NodeManagerException("No node is configured as master and I have no information on who was the previous master");
         }
 
         log.info("Node {} is the master of the current cluster configuration", master.getHostConfiguration());
@@ -318,14 +340,14 @@ public class NodeManager implements NodeListener {
                 try {
                     node.makeSlaveOf(master.getHostConfiguration().getHost(), master.getHostConfiguration().getPort());
                     slaves.add(node.getHostConfiguration());
-                } catch ( Exception e ) {
+                } catch (Exception e) {
                     unavailable.add(node.getHostConfiguration());
                     log.error("Failed to set node to be slave of current master");
                 }
             }
         }
 
-        ClusterStatus status = new ClusterStatus( master.getHostConfiguration(), slaves, unavailable );
+        ClusterStatus status = new ClusterStatus(master.getHostConfiguration(), slaves, unavailable);
 
         this.fireClusterStatusChanged(status);
 
@@ -341,22 +363,22 @@ public class NodeManager implements NodeListener {
 
     public void assertMasterIsConfigured() {
         try {
-            for ( Node node : this.nodes ) {
-                if ( this.lastClusterStatus.getMaster().equals( node.getHostConfiguration() ) ) {
-                    if ( !node.isMaster() ) {
+            for (Node node : this.nodes) {
+                if (this.lastClusterStatus.getMaster().equals(node.getHostConfiguration())) {
+                    if (!node.isMaster()) {
                         node.becomeMaster();
                     }
                 }
             }
 
-            for ( Node node : this.nodes ) {
-                if ( this.lastClusterStatus.getSlaves().contains( node.getHostConfiguration() ) ) {
-                    if ( node.getMasterConfiguration() == null || !node.getMasterConfiguration().equals( this.lastClusterStatus.getMaster() ) ) {
-                        node.makeSlaveOf( this.lastClusterStatus.getMaster().getHost(), this.lastClusterStatus.getMaster().getPort() );
+            for (Node node : this.nodes) {
+                if (this.lastClusterStatus.getSlaves().contains(node.getHostConfiguration())) {
+                    if (node.getMasterConfiguration() == null || !node.getMasterConfiguration().equals(this.lastClusterStatus.getMaster())) {
+                        node.makeSlaveOf(this.lastClusterStatus.getMaster().getHost(), this.lastClusterStatus.getMaster().getPort());
                     }
                 }
             }
-        } catch ( Exception e ) {
+        } catch (Exception e) {
             log.error("Failed to reconcile master/slave configuration, wait for next node data loop", e);
         }
     }
@@ -367,7 +389,7 @@ public class NodeManager implements NodeListener {
         for (Node node : this.nodes) {
             try {
                 node.stop();
-            } catch ( Exception e ) {
+            } catch (Exception e) {
                 log.error("Failed to stop this node", e);
             }
         }
@@ -378,7 +400,7 @@ public class NodeManager implements NodeListener {
     @Override
     public void nodeIsOnline(final Node node, final long latency) {
         this.publishNodeState();
-        if ( this.reportedNodes.size() != this.nodes.size() ) {
+        if (this.reportedNodes.size() != this.nodes.size()) {
             this.reportedNodes.add(node.getHostConfiguration());
         }
     }
@@ -386,13 +408,13 @@ public class NodeManager implements NodeListener {
     @Override
     public void nodeIsOffline(final Node node, final Exception e) {
         this.publishNodeState();
-        if ( this.reportedNodes.size() != this.nodes.size() ) {
+        if (this.reportedNodes.size() != this.nodes.size()) {
             this.reportedNodes.add(node.getHostConfiguration());
         }
     }
 
     private void publishNodeState() {
-        if ( this.currentNodesState == null || !this.currentNodesState.equals( this.toNodeStates() ) ) {
+        if (this.currentNodesState == null || !this.currentNodesState.equals(this.toNodeStates())) {
             this.currentNodesState = this.toNodeStates();
             this.zooKeeperClient.setNodeData(this.nodeName, this.currentNodesState);
         }

@@ -254,7 +254,7 @@ public class NodeManagerTest {
     }
 
     @Test
-    public void testGrabMachineThatCameBackAsSlave() {
+    public void testSetMachineThatCameBackAsSlave() {
         Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
 
         ClusterStatus status = new ClusterStatus(

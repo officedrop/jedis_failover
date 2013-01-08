@@ -12,6 +12,8 @@ import java.util.Collection;
  */
 public class SimpleMajorityStrategy implements FailureDetectionStrategy {
 
+    public static final SimpleMajorityStrategy INSTANCE = new SimpleMajorityStrategy();
+
     @Override
     public boolean isAvailable(final HostConfiguration configuration, final Collection<NodeState> states) {
 

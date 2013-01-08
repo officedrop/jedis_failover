@@ -12,6 +12,8 @@ import java.util.*;
  */
 public class LatencyFailoverSelectionStrategy implements FailoverSelectionStrategy {
 
+    public static final LatencyFailoverSelectionStrategy INSTANCE = new LatencyFailoverSelectionStrategy();
+
     @Override
     public HostConfiguration selectMaster(Set<HostConfiguration> hosts, final Map<String, Map<HostConfiguration, NodeState>> nodeReports) {
 

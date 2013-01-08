@@ -18,26 +18,38 @@ import java.util.*;
  * Date: 12/17/12
  * Time: 7:04 PM
  */
-public class Client implements JedisClient {
+public class Client implements JedisClient, NodeManagerListener {
 
     private static final Logger log = LoggerFactory.getLogger(Client.class);
 
-    private ZooKeeperClient zooKeeper;
+    private NodeManager nodeManager;
     private JedisClientFactory factory;
     private JedisClient master;
     private CircularList<JedisClient> slaves;
 
-    public Client(ZooKeeperClient zooKeeper, JedisClientFactory factory) throws IOException {
+    public Client(NodeManager nodeManager, JedisClientFactory factory) {
         this.factory = factory;
-        this.zooKeeper = zooKeeper;
+        this.nodeManager = nodeManager;
+
+        this.nodeManager.addListeners(this);
 
         this.updateMaster();
         this.updateSlaves();
     }
 
+    @Override
+    public void masterChanged(final NodeManager manager, final ClusterStatus status) {
+        this.updateMaster();
+    }
+
+    @Override
+    public void slavesChanged(final NodeManager manager, final ClusterStatus status) {
+        this.updateSlaves();
+    }
+
     private void updateMaster() {
         this.quitMaster();
-        this.master = this.factory.create(this.zooKeeper.getMaster());
+        this.master = this.factory.create(this.nodeManager.getLastClusterStatus().getMaster());
     }
 
     private void updateSlaves() {
@@ -45,7 +57,7 @@ public class Client implements JedisClient {
 
         List<JedisClient> slaveClients = new ArrayList<JedisClient>();
 
-        for ( HostConfiguration configuration : this.zooKeeper.getSlaves() ) {
+        for ( HostConfiguration configuration : this.nodeManager.getLastClusterStatus().getSlaves() ) {
             slaveClients.add(this.factory.create(configuration));
         }
 
