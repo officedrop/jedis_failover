@@ -99,7 +99,7 @@ public class JsonBinderTest {
                 Arrays.asList(configuration7003));
 
         Assert.assertEquals(
-                "{\"unavailable\":[\"localhost:7003\"],\"slaves\":[\"localhost:7001\",\"localhost:7002\"],\"master\":\"localhost:7000\"}",
+                "{\"unavailable\":[\"localhost:7003\"],\"slaves\":[\"localhost:7002\",\"localhost:7001\"],\"master\":\"localhost:7000\"}",
                 new String( binder.toBytes(status) ) );
     }
 

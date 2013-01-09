@@ -4,6 +4,7 @@ import org.apache.commons.pool.PoolableObjectFactory;
 import org.apache.commons.pool.impl.GenericObjectPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import redis.clients.jedis.JedisPoolConfig;
 
 /**
  * User: Maurício Linhares
@@ -15,10 +16,16 @@ public class CommonsJedisPool implements PoolableObjectFactory, JedisPool {
     private static final Logger log = LoggerFactory.getLogger(CommonsJedisPool.class);
 
     private final JedisFactory factory;
-    private final GenericObjectPool pool = new GenericObjectPool(this);
+    private final GenericObjectPool pool;
+
+    public CommonsJedisPool(JedisFactory factory, JedisPoolConfig config) {
+        this.factory = factory;
+        this.pool = new GenericObjectPool(this, config);
+    }
 
     public CommonsJedisPool(JedisFactory factory) {
         this.factory = factory;
+        this.pool = new GenericObjectPool(this);
     }
 
     @Override
