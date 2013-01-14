@@ -10,4 +10,7 @@ public interface JedisPool {
     public void withJedis(JedisFunction action);
 
     public <T> T withJedis(JedisResultFunction<T> action);
+
+    public void close();
+
 }

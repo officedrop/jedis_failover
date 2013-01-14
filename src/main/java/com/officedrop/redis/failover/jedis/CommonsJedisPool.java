@@ -1,10 +1,15 @@
 package com.officedrop.redis.failover.jedis;
 
+import com.officedrop.redis.failover.utils.Action1;
 import org.apache.commons.pool.PoolableObjectFactory;
 import org.apache.commons.pool.impl.GenericObjectPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPoolConfig;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * User: Maurício Linhares
@@ -17,10 +22,15 @@ public class CommonsJedisPool implements PoolableObjectFactory, JedisPool {
 
     private final JedisFactory factory;
     private final GenericObjectPool pool;
+    private final List<Action1<CommonsJedisPool>> listeners = new CopyOnWriteArrayList<Action1<CommonsJedisPool>>();
 
     public CommonsJedisPool(JedisFactory factory, JedisPoolConfig config) {
         this.factory = factory;
         this.pool = new GenericObjectPool(this, config);
+    }
+
+    public void addListeners( Action1<CommonsJedisPool> ... listeners ) {
+        this.listeners.addAll(Arrays.asList(listeners));
     }
 
     public CommonsJedisPool(JedisFactory factory) {
@@ -87,5 +97,21 @@ public class CommonsJedisPool implements PoolableObjectFactory, JedisPool {
 
     @Override
     public void passivateObject(final Object obj) throws Exception {
+    }
+
+    public void close() {
+        try {
+            this.pool.close();
+        } catch ( Exception e ) {
+            throw new ConnectionException(e);
+        } finally {
+            for ( Action1<CommonsJedisPool> listener : this.listeners ) {
+                try {
+                    listener.apply(this);
+                } catch ( Exception e ) {
+                    log.error("Failed to send even to listener", e);
+                }
+            }
+        }
     }
 }
