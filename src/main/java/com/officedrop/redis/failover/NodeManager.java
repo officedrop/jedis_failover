@@ -6,6 +6,7 @@ import com.officedrop.redis.failover.strategy.FailoverSelectionStrategy;
 import com.officedrop.redis.failover.strategy.FailureDetectionStrategy;
 import com.officedrop.redis.failover.strategy.LatencyFailoverSelectionStrategy;
 import com.officedrop.redis.failover.strategy.SimpleMajorityStrategy;
+import com.officedrop.redis.failover.utils.Function;
 import com.officedrop.redis.failover.utils.SleepUtils;
 import com.officedrop.redis.failover.zookeeper.ZooKeeperNetworkClient;
 import org.slf4j.Logger;
@@ -422,6 +423,15 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
             this.currentNodesState = this.toNodeStates();
             this.zooKeeperClient.setNodeData(this.nodeName, this.currentNodesState);
         }
+    }
+
+    public void waitUntilMasterIsAvailable( long millis ) {
+        SleepUtils.waitUntil(millis, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                return NodeManager.this.getLastClusterStatus().hasMaster();
+            }
+        });
     }
 
     private Map<HostConfiguration, NodeState> toNodeStates() {

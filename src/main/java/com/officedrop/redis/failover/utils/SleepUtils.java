@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * User: Maurício Linhares
@@ -34,7 +35,7 @@ public class SleepUtils {
         }
 
         if ( !waiter.apply() ) {
-            throw new IllegalStateException("Execution of loop timed out");
+            throw new IllegalStateException(String.format("Execution of loop timed out after %s millis", millis));
         }
 
     }

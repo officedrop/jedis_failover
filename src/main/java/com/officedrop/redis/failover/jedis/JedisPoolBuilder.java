@@ -30,6 +30,11 @@ public class JedisPoolBuilder {
 
         final NodeManager nodeManager = new NodeManager(zooKeeperHosts, redisServers);
         nodeManager.start();
+        try {
+            nodeManager.waitUntilMasterIsAvailable(10000);
+        } finally {
+            nodeManager.stop();
+        }
 
         this.onCloseAction = new Action1<CommonsJedisPool>() {
             @Override

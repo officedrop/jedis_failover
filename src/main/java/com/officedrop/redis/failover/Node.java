@@ -198,7 +198,13 @@ public class Node {
 
             if (!line.trim().isEmpty()) {
                 String[] pair = line.split(":");
-                parameters.put(pair[0], pair[1]);
+
+                if ( pair.length == 2 ) {
+                    parameters.put(pair[0], pair[1]);
+                } else {
+                    log.warn("Info line is empty - {}", line);
+                }
+
             }
 
         }
