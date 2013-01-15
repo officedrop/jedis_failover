@@ -7,10 +7,8 @@ import com.officedrop.redis.failover.utils.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.io.StringReader;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -194,20 +192,20 @@ public class Node {
 
         Map<String, String> parameters = new HashMap<String, String>();
 
-        for (String line : data.split("\r\n")) {
+        Scanner s = new Scanner(new StringReader(data));
 
-            if (!line.trim().isEmpty()) {
+        while ( s.hasNext() ) {
+            String line = s.nextLine();
+            if (line.contains(":")) {
                 String[] pair = line.split(":");
 
                 if ( pair.length == 2 ) {
                     parameters.put(pair[0], pair[1]);
-                } else {
-                    log.warn("Info line is empty - {}", line);
                 }
-
             }
-
         }
+
+        s.close();
 
         return parameters;
     }
