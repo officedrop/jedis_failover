@@ -30,10 +30,12 @@ public class JedisPoolBuilder {
 
         final NodeManager nodeManager = new NodeManager(zooKeeperHosts, redisServers);
         nodeManager.start();
+
         try {
             nodeManager.waitUntilMasterIsAvailable(10000);
-        } finally {
+        } catch ( Exception e ) {
             nodeManager.stop();
+            throw new IllegalStateException("Node manager could not be started", e);
         }
 
         this.onCloseAction = new Action1<CommonsJedisPool>() {

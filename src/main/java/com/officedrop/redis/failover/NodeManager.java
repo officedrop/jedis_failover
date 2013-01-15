@@ -203,22 +203,30 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
     }
 
     private void fireClusterStatusChanged(ClusterStatus clusterStatus) {
-        if (NodeManager.this.lastClusterStatus != null) {
-            switch (NodeManager.this.lastClusterStatus.difference(clusterStatus)) {
+
+        ClusterStatus previousClusterStatus = this.lastClusterStatus;
+        this.lastClusterStatus = clusterStatus;
+
+        if (previousClusterStatus != null) {
+            switch (previousClusterStatus.difference(this.lastClusterStatus)) {
                 case BOTH:
+                    log.info("Both master and slaves changed");
                     fireMasterChangedEvent(clusterStatus);
                     fireSlaveChangedEvent(clusterStatus);
                     break;
                 case MASTER:
+                    log.info("Master changed");
                     fireMasterChangedEvent(clusterStatus);
                     break;
                 case SLAVES:
+                    log.info("Slaves changed");
                     fireSlaveChangedEvent(clusterStatus);
                     break;
             }
+        } else {
+            fireMasterChangedEvent(clusterStatus);
+            fireSlaveChangedEvent(clusterStatus);
         }
-
-        this.lastClusterStatus = clusterStatus;
 
         if (this.zooKeeperClient.hasLeadership()) {
             if (!clusterStatus.hasMaster()) {
@@ -355,7 +363,6 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
         ClusterStatus status = new ClusterStatus(master.getHostConfiguration(), slaves, unavailable);
 
         this.fireClusterStatusChanged(status);
-
     }
 
     private void reconcile() {
@@ -389,6 +396,9 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
     }
 
     public void stop() {
+
+        log.warn("Stopping node manager {}", this);
+
         this.running = false;
 
         for (Node node : this.nodes) {
@@ -400,6 +410,15 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
         }
 
         this.zooKeeperClient.close();
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+        super.finalize();
+        log.warn("Finalizing node manager {}", this);
+        if ( this.running ) {
+            this.stop();
+        }
     }
 
     @Override

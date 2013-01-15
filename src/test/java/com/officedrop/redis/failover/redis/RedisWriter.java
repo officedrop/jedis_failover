@@ -35,7 +35,7 @@ public class RedisWriter extends FilterOutputStream {
     }
 
     public void writeEmpty() {
-        this.write("$-1");
+        this.write("$-1\r\n");
     }
 
     public void writeData( String data ) {

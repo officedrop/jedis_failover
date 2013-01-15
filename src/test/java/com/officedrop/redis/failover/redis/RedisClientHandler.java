@@ -51,7 +51,7 @@ public class RedisClientHandler {
                                 parameters.add(scanner.nextLine());
                             }
 
-                            log.debug("Received command {}", parameters);
+                            log.info("Received command {}", parameters);
 
                             if (!server.isAlwaysTimeout()) {
                                 switch (RedisCommand.valueOf(parameters.get(0))) {
@@ -85,6 +85,9 @@ public class RedisClientHandler {
                                         break;
                                     case SET:
                                         server.set(parameters.get(1), parameters.get(2));
+                                        writer.writeSuccess("OK");
+                                        break;
+                                    case QUIT:
                                         writer.writeSuccess("OK");
                                         break;
                                     default:

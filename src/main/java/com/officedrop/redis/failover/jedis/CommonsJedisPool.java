@@ -75,8 +75,13 @@ public class CommonsJedisPool implements PoolableObjectFactory, JedisPool {
 
     @Override
     public void destroyObject(final Object obj) throws Exception {
-        JedisActions actions = (JedisActions) obj;
-        actions.quit();
+        try {
+            JedisActions actions = (JedisActions) obj;
+            actions.quit();
+        } catch ( Exception e ) {
+            log.error("Failed to destroy jedis object", e);
+        }
+
     }
 
     @Override

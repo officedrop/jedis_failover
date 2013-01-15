@@ -38,11 +38,13 @@ public class Client implements JedisClient, NodeManagerListener {
 
     @Override
     public void masterChanged(final NodeManager manager, final ClusterStatus status) {
+        log.info("Master has changed -> {}", status.getMaster());
         this.updateMaster();
     }
 
     @Override
     public void slavesChanged(final NodeManager manager, final ClusterStatus status) {
+        log.info("Slaves have changed -> {}", status.getSlaves());
         this.updateSlaves();
     }
 
@@ -173,6 +175,7 @@ public class Client implements JedisClient, NodeManagerListener {
         return this.doAction(ClientType.SLAVE, new ClientFunction<String>() {
             @Override
             public String apply(JedisClient client) {
+                client.ping();
                 return client.get(key);
             }
         });

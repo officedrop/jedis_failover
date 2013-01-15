@@ -104,7 +104,7 @@ public class RedisServer implements Closeable {
                     try {
                         final Socket socket = getServer().accept();
 
-                        log.info("Accepted client {}", socket.getInetAddress());
+                        log.info("Accepted client {}:{}", socket.getInetAddress(), getPort());
 
                         RedisClientHandler handler = new RedisClientHandler(RedisServer.this, socket);
 
