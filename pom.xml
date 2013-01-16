@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.officedrop</groupId>
     <artifactId>jedis-failover</artifactId>
-    <version>0.0.7</version>
+    <version>0.0.8</version>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
