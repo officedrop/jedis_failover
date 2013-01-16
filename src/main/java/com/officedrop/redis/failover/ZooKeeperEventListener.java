@@ -9,8 +9,6 @@ import java.util.Map;
  */
 public interface ZooKeeperEventListener {
 
-    public void nodesDataChanged( ZooKeeperClient client, String nodeId, Map<String,Map<HostConfiguration,NodeState>> nodesData );
-
     public void clusterDataChanged( ZooKeeperClient client, ClusterStatus clusterStatus );
 
 }

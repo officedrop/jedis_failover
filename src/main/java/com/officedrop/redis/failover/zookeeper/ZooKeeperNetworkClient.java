@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
  * Date: 12/31/12
  * Time: 5:53 PM
  */
-public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCacheListener, NodeCacheListener {
+public class ZooKeeperNetworkClient implements ZooKeeperClient {
 
     private static final Logger log = LoggerFactory.getLogger(ZooKeeperNetworkClient.class);
 
@@ -39,11 +39,10 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
     private final CuratorFramework curator;
     private final List<ZooKeeperEventListener> listeners = new CopyOnWriteArrayList<ZooKeeperEventListener>();
     private final JsonBinder jsonBinder = new JacksonJsonBinder();
-    private final PathChildrenCache nodesDataCache;
-    private final NodeCache clusterDataCache;
     private final LeaderLatch leaderLatch;
     private volatile boolean closed = false;
-
+    private final Timer timer;
+    private volatile ClusterStatus lastClusterStatus;
 
     public ZooKeeperNetworkClient(String hosts) {
 
@@ -55,19 +54,27 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
                     .build();
             this.curator.start();
 
+            this.lastClusterStatus = new ClusterStatus(null, Collections.EMPTY_LIST, Collections.EMPTY_LIST);
+
             EnsurePath ensurePath = new EnsurePath(NODE_STATES_PATH);
             ensurePath.ensure(this.curator.getZookeeperClient());
 
             ensurePath = new EnsurePath(CLUSTER_PATH);
             ensurePath.ensure(this.curator.getZookeeperClient());
 
-            this.nodesDataCache = new PathChildrenCache(this.getCurator(), NODE_STATES_PATH, true);
-            this.nodesDataCache.getListenable().addListener(this);
-            this.nodesDataCache.start(true);
+            this.timer = new Timer(true);
+            this.timer.scheduleAtFixedRate(new TimerTask() {
+                @Override
+                public void run() {
+                    ClusterStatus clusterStatus = getClusterData();
 
-            this.clusterDataCache = new NodeCache(this.getCurator(), CLUSTER_PATH);
-            this.clusterDataCache.getListenable().addListener(this);
-            this.clusterDataCache.start(true);
+                    if ( clusterStatus != null && !clusterStatus.equals(ZooKeeperNetworkClient.this.lastClusterStatus) ) {
+                        ZooKeeperNetworkClient.this.lastClusterStatus = clusterStatus;
+                        clusterStatusChanged();
+                    }
+
+                }
+            }, 0, 5000);
 
             this.leaderLatch = new LeaderLatch(this.curator, LEADER_MUTEX, UUID.randomUUID().toString());
             this.leaderLatch.start();
@@ -119,7 +126,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
     @Override
     public ClusterStatus getClusterData() {
         try {
-            byte[] data = this.clusterDataCache.getCurrentData().getData();
+            byte[] data = this.curator.getData().forPath(CLUSTER_PATH);
 
             if (data != null && data.length != 0) {
                 return this.jsonBinder.toClusterStatus(data);
@@ -137,10 +144,11 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
     }
 
     public void close() {
-        log.info("Closking ZookeeperNetworkClient");
+        log.info("Closing ZookeeperNetworkClient");
         if ( !this.closed ) {
             this.closed = true;
-            this.close(this.clusterDataCache, this.leaderLatch, this.nodesDataCache, this.curator);
+            this.timer.cancel();
+            this.close( this.leaderLatch, this.curator);
         }
     }
 
@@ -175,47 +183,29 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient, PathChildrenCach
         }
     }
 
-    @Override
-    public void nodeChanged() throws Exception {
-        byte[] data = this.clusterDataCache.getCurrentData().getData();
-
-        if (data != null && data.length > 0) {
-            for (ZooKeeperEventListener listener : this.listeners) {
-                listener.clusterDataChanged(this, this.jsonBinder.toClusterStatus(data));
-            }
+    private void clusterStatusChanged() {
+        for (ZooKeeperEventListener listener : this.listeners) {
+            listener.clusterDataChanged(this, this.lastClusterStatus);
         }
-    }
-
-    @Override
-    public void childEvent(final CuratorFramework curatorFramework, final PathChildrenCacheEvent pathChildrenCacheEvent) throws Exception {
-
-        switch (pathChildrenCacheEvent.getType()) {
-            case CHILD_ADDED:
-            case CHILD_REMOVED:
-            case CHILD_UPDATED:
-
-                Map<String, Map<HostConfiguration, NodeState>> states = this.getNodeDatas();
-
-                for (ZooKeeperEventListener listener : this.listeners) {
-                    listener.nodesDataChanged(this, ZKPaths.getNodeFromPath(pathChildrenCacheEvent.getData().getPath()), states);
-                }
-
-                break;
-        }
-
     }
 
     @Override
     public Map<String, Map<HostConfiguration, NodeState>> getNodeDatas() {
         Map<String, Map<HostConfiguration, NodeState>> states = new HashMap<String, Map<HostConfiguration, NodeState>>();
 
-        for (ChildData data : this.nodesDataCache.getCurrentData()) {
-            byte[] nodeData = data.getData();
+        try {
+            List<String> children = this.curator.getChildren().forPath( NODE_STATES_PATH );
 
-            if (nodeData != null && nodeData.length > 0) {
-                String node = ZKPaths.getNodeFromPath(data.getPath());
-                states.put(node, this.jsonBinder.toNodeState(nodeData));
+            for (String path : children) {
+                byte[] nodeData = this.curator.getData().forPath(PathUtils.toPath(NODE_STATES_PATH, path));
+
+                if (nodeData != null && nodeData.length > 0) {
+                    states.put(path, this.jsonBinder.toNodeState(nodeData));
+                }
             }
+        } catch ( Exception e ) {
+            log.error("Error trying to access node datas", e);
+            throw new ZooKeeperException(e);
         }
 
         return states;

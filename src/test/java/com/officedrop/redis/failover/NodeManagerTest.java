@@ -45,7 +45,7 @@ public class NodeManagerTest {
         slaveRedis1 = new RedisServer("localhost", COUNT.getAndIncrement());
         slaveRedis1.start();
         slaveRedis1.setMasterHost("localhost");
-        slaveRedis1.setMasterPort( masterRedis.getPort() );
+        slaveRedis1.setMasterPort(masterRedis.getPort());
 
         slaveRedis2 = new RedisServer("localhost", COUNT.getAndIncrement());
         slaveRedis2.start();
@@ -57,7 +57,7 @@ public class NodeManagerTest {
         hosts = Arrays.asList(
                 masterRedis.getHostConfiguration(),
                 slaveRedis1.getHostConfiguration(),
-                slaveRedis2.getHostConfiguration() );
+                slaveRedis2.getHostConfiguration());
     }
 
 
@@ -68,11 +68,11 @@ public class NodeManagerTest {
 
     @Test
     public void testStartFromBlankConfiguration() throws Exception {
-        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+        Assert.assertTrue(zooKeeper.getClusterData().isEmpty());
 
         Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
-        slaves.add( hosts.get(1) );
-        slaves.add( hosts.get(2) );
+        slaves.add(hosts.get(1));
+        slaves.add(hosts.get(2));
 
         final NodeManager manager = create();
 
@@ -87,18 +87,19 @@ public class NodeManagerTest {
 
         ClusterStatus status = zooKeeper.getClusterData();
 
-        Assert.assertEquals( slaves, status.getSlaves() );
-        Assert.assertEquals( hosts.get(0), status.getMaster() );
+        Assert.assertEquals(slaves, status.getSlaves());
+        Assert.assertEquals(hosts.get(0), status.getMaster());
+
 
         manager.stop();
     }
 
     @Test
     public void testWithOneFailedClient() throws Exception {
-        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+        Assert.assertTrue(zooKeeper.getClusterData().isEmpty());
 
         Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
-        slaves.add( hosts.get(1) );
+        slaves.add(hosts.get(1));
 
         final NodeManager manager = create();
 
@@ -122,8 +123,8 @@ public class NodeManagerTest {
 
         ClusterStatus status = zooKeeper.getClusterData();
 
-        Assert.assertEquals( hosts.get(0), status.getMaster() );
-        Assert.assertEquals( slaves, status.getSlaves() );
+        Assert.assertEquals(hosts.get(0), status.getMaster());
+        Assert.assertEquals(slaves, status.getSlaves());
 
         manager.stop();
     }
@@ -131,14 +132,14 @@ public class NodeManagerTest {
     @Test
     public void testWithTwoNodeManagersAtTheSameTime() {
 
-        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+        Assert.assertTrue(zooKeeper.getClusterData().isEmpty());
 
         Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
-        slaves.add( hosts.get(1) );
+        slaves.add(hosts.get(1));
 
         ZooKeeperClient client = new ZooKeeperNetworkClient(server.getConnectString());
 
-        List<NodeManager> managers = Arrays.asList( create(), create(client));
+        List<NodeManager> managers = Arrays.asList(create(), create(client));
 
         SleepUtils.waitUntil(5000, new Function<Boolean>() {
             @Override
@@ -160,10 +161,10 @@ public class NodeManagerTest {
 
         ClusterStatus status = zooKeeper.getClusterData();
 
-        Assert.assertEquals( hosts.get(0), status.getMaster() );
-        Assert.assertEquals( slaves, status.getSlaves() );
+        Assert.assertEquals(hosts.get(0), status.getMaster());
+        Assert.assertEquals(slaves, status.getSlaves());
 
-        for ( NodeManager manager : managers ) {
+        for (NodeManager manager : managers) {
             manager.stop();
         }
 
@@ -172,12 +173,12 @@ public class NodeManagerTest {
     @Test
     public void testWithMasterFailing() {
 
-        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+        Assert.assertTrue(zooKeeper.getClusterData().isEmpty());
 
         Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
-        slaves.add( hosts.get(1) );
+        slaves.add(hosts.get(1));
 
-        List<NodeManager> managers = Arrays.asList( create());
+        List<NodeManager> managers = Arrays.asList(create());
 
         SleepUtils.waitUntil(5000, new Function<Boolean>() {
             @Override
@@ -200,28 +201,28 @@ public class NodeManagerTest {
         ClusterStatus status = zooKeeper.getClusterData();
 
         Assert.assertTrue(status.hasMaster());
-        Assert.assertEquals( 1, slaves.size() );
-        Assert.assertEquals( masterRedis.getHostConfiguration(), status.getUnavailables().iterator().next() );
+        Assert.assertEquals(1, slaves.size());
+        Assert.assertEquals(masterRedis.getHostConfiguration(), status.getUnavailables().iterator().next());
 
-        if ( status.getMaster().equals(slaveRedis1.getHostConfiguration()) ) {
-            Assert.assertEquals( slaveRedis1.getHostConfiguration(), slaveRedis2.getMasterConfiguration() );
+        if (status.getMaster().equals(slaveRedis1.getHostConfiguration())) {
+            Assert.assertEquals(slaveRedis1.getHostConfiguration(), slaveRedis2.getMasterConfiguration());
         } else {
-            Assert.assertEquals( slaveRedis2.getHostConfiguration(), slaveRedis1.getMasterConfiguration() );
+            Assert.assertEquals(slaveRedis2.getHostConfiguration(), slaveRedis1.getMasterConfiguration());
         }
 
-        for ( NodeManager manager : managers ) {
+        for (NodeManager manager : managers) {
             manager.stop();
         }
     }
 
     @Test
     public void testWithDataAlreadyAvailable() {
-        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+        Assert.assertTrue(zooKeeper.getClusterData().isEmpty());
 
         ClusterStatus status = new ClusterStatus(
                 masterRedis.getHostConfiguration(),
-                Arrays.asList( slaveRedis1.getHostConfiguration(), slaveRedis2.getHostConfiguration() ),
-                Collections.EMPTY_LIST );
+                Arrays.asList(slaveRedis1.getHostConfiguration(), slaveRedis2.getHostConfiguration()),
+                Collections.EMPTY_LIST);
 
         zooKeeper.setClusterData(status);
 
@@ -240,14 +241,14 @@ public class NodeManagerTest {
 
         ClusterStatus currentStatus = zooKeeper.getClusterData();
 
-        Assert.assertEquals( masterRedis.getHostConfiguration(), currentStatus.getUnavailables().iterator().next() );
-        Assert.assertEquals( 1, currentStatus.getUnavailables().size() );
+        Assert.assertEquals(masterRedis.getHostConfiguration(), currentStatus.getUnavailables().iterator().next());
+        Assert.assertEquals(1, currentStatus.getUnavailables().size());
 
-        if ( currentStatus.getMaster().equals(slaveRedis1.getHostConfiguration()) ) {
-            Assert.assertEquals( slaveRedis2.getHostConfiguration(), currentStatus.getSlaves().iterator().next() );
+        if (currentStatus.getMaster().equals(slaveRedis1.getHostConfiguration())) {
+            Assert.assertEquals(slaveRedis2.getHostConfiguration(), currentStatus.getSlaves().iterator().next());
         } else {
-            Assert.assertEquals( slaveRedis2.getHostConfiguration(), currentStatus.getMaster() );
-            Assert.assertEquals( slaveRedis1.getHostConfiguration(), currentStatus.getSlaves().iterator().next() );
+            Assert.assertEquals(slaveRedis2.getHostConfiguration(), currentStatus.getMaster());
+            Assert.assertEquals(slaveRedis1.getHostConfiguration(), currentStatus.getSlaves().iterator().next());
         }
 
         manager.stop();
@@ -255,12 +256,12 @@ public class NodeManagerTest {
 
     @Test
     public void testSetMachineThatCameBackAsSlave() {
-        Assert.assertTrue( zooKeeper.getClusterData().isEmpty() );
+        Assert.assertTrue(zooKeeper.getClusterData().isEmpty());
 
         ClusterStatus status = new ClusterStatus(
                 masterRedis.getHostConfiguration(),
-                Arrays.asList( slaveRedis1.getHostConfiguration(), slaveRedis2.getHostConfiguration() ),
-                Collections.EMPTY_LIST );
+                Arrays.asList(slaveRedis1.getHostConfiguration(), slaveRedis2.getHostConfiguration()),
+                Collections.EMPTY_LIST);
 
         zooKeeper.setClusterData(status);
 
@@ -280,30 +281,30 @@ public class NodeManagerTest {
         masterRedis = new RedisServer(masterRedis.getHostConfiguration().getHost(), masterRedis.getPort());
         masterRedis.start();
 
-        SleepUtils.waitUntil( 10000, new Function<Boolean>() {
+        SleepUtils.waitUntil(10000, new Function<Boolean>() {
             @Override
             public Boolean apply() {
                 ClusterStatus status = zooKeeper.getClusterData();
                 return status.getUnavailables().isEmpty();
             }
-        } );
+        });
 
         ClusterStatus currentStatus = zooKeeper.getClusterData();
 
-        Assert.assertTrue( currentStatus.getSlaves().contains(masterRedis.getHostConfiguration()) );
-        Assert.assertEquals( currentStatus.getMaster(), masterRedis.getMasterConfiguration() );
+        Assert.assertTrue(currentStatus.getSlaves().contains(masterRedis.getHostConfiguration()));
+        Assert.assertEquals(currentStatus.getMaster(), masterRedis.getMasterConfiguration());
 
         manager.stop();
     }
 
-    private void close( Closeable ... closeables ) {
-        for ( Closeable c : closeables ) {
+    private void close(Closeable... closeables) {
+        for (Closeable c : closeables) {
             IOUtils.closeQuietly(c);
         }
     }
 
-    private NodeManager create( ZooKeeperClient client ) {
-        NodeManager manager =  new NodeManager(
+    private NodeManager create(ZooKeeperClient client) {
+        NodeManager manager = new NodeManager(
                 client,
                 hosts,
                 GenericJedisClientFactory.INSTANCE,

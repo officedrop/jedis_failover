@@ -77,9 +77,6 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
         this.nodeName = uniqueName;
 
         this.zooKeeperClient.addEventListeners(new ZooKeeperEventListener() {
-            @Override
-            public void nodesDataChanged(final ZooKeeperClient client, final String nodeId, final Map<String, Map<HostConfiguration, NodeState>> nodesData) {
-            }
 
             @Override
             public void clusterDataChanged(final ZooKeeperClient client, final ClusterStatus clusterStatus) {
