@@ -2,11 +2,9 @@ package com.officedrop.redis.failover.zookeeper;
 
 import com.netflix.curator.framework.CuratorFramework;
 import com.netflix.curator.framework.CuratorFrameworkFactory;
-import com.netflix.curator.framework.recipes.cache.*;
 import com.netflix.curator.framework.recipes.leader.LeaderLatch;
 import com.netflix.curator.retry.ExponentialBackoffRetry;
 import com.netflix.curator.utils.EnsurePath;
-import com.netflix.curator.utils.ZKPaths;
 import com.officedrop.redis.failover.*;
 import com.officedrop.redis.failover.utils.JacksonJsonBinder;
 import com.officedrop.redis.failover.utils.JsonBinder;
@@ -56,7 +54,10 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
 
             this.lastClusterStatus = new ClusterStatus(null, Collections.EMPTY_LIST, Collections.EMPTY_LIST);
 
-            EnsurePath ensurePath = new EnsurePath(NODE_STATES_PATH);
+            EnsurePath ensurePath = new EnsurePath(BASE_PATH);
+            ensurePath.ensure(this.curator.getZookeeperClient());
+
+            ensurePath = new EnsurePath(NODE_STATES_PATH);
             ensurePath.ensure(this.curator.getZookeeperClient());
 
             ensurePath = new EnsurePath(CLUSTER_PATH);
