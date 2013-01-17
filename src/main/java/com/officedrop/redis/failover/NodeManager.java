@@ -382,6 +382,7 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
 
             for (Node node : this.nodes) {
                 if (this.lastClusterStatus.getSlaves().contains(node.getHostConfiguration())) {
+                    log.info("Node {} master is {}", node.getHostConfiguration(), node.getMasterConfiguration());
                     if (node.getMasterConfiguration() == null || !node.getMasterConfiguration().equals(this.lastClusterStatus.getMaster())) {
                         node.makeSlaveOf(this.lastClusterStatus.getMaster().getHost(), this.lastClusterStatus.getMaster().getPort());
                     }
