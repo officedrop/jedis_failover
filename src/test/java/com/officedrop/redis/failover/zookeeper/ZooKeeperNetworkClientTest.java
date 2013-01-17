@@ -1,5 +1,9 @@
 package com.officedrop.redis.failover.zookeeper;
 
+import com.netflix.curator.framework.CuratorFramework;
+import com.netflix.curator.framework.CuratorFrameworkFactory;
+import com.netflix.curator.retry.ExponentialBackoffRetry;
+import com.netflix.curator.retry.RetryOneTime;
 import com.netflix.curator.test.TestingServer;
 import com.officedrop.redis.failover.*;
 import com.officedrop.redis.failover.utils.JacksonJsonBinder;
@@ -22,6 +26,31 @@ import java.util.concurrent.Exchanger;
 public class ZooKeeperNetworkClientTest {
 
     private static final Logger log = LoggerFactory.getLogger(ZooKeeperNetworkClientTest.class);
+
+    @Test
+    public void testClientCreation() throws Exception {
+
+        TestingServer server = new TestingServer();
+
+        String namespace = "/sample";
+
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient( server.getConnectString() + namespace );
+
+        CuratorFramework curator = CuratorFrameworkFactory
+                .builder()
+                .connectString( server.getConnectString() )
+                .retryPolicy(new RetryOneTime(1))
+                .build();
+        curator.start();
+
+        Assert.assertNotNull( curator.checkExists().forPath( PathUtils.toPath( namespace, ZooKeeperNetworkClient.BASE_PATH ) ) );
+        Assert.assertNotNull( curator.checkExists().forPath( PathUtils.toPath( namespace, ZooKeeperNetworkClient.NODE_STATES_PATH ) ) );
+        Assert.assertNotNull( curator.checkExists().forPath( PathUtils.toPath( namespace, ZooKeeperNetworkClient.CLUSTER_PATH ) ) );
+
+        curator.close();
+        client.close();
+        server.close();
+    }
 
     @Test
     public void testSetNodeData() throws Exception {
@@ -52,6 +81,8 @@ public class ZooKeeperNetworkClientTest {
 
         Assert.assertTrue(currentNodes.containsKey(JsonBinderTest.configuration7000));
         Assert.assertTrue(currentNodes.containsKey(JsonBinderTest.configuration7001));
+
+        client.close();
 
         server.close();
     }

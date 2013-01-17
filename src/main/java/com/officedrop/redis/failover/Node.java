@@ -31,7 +31,7 @@ public class Node {
     private final HostConfiguration hostConfiguration;
     private final JedisClientFactory factory;
     private final ReentrantLock lock = new ReentrantLock();
-    private NodeState currentState = new NodeState();
+    private volatile NodeState currentState = new NodeState();
 
     public Node(HostConfiguration hostConfiguration, JedisClientFactory factory, long sleepDelay, int maxErrors) {
         this.hostConfiguration = hostConfiguration;
@@ -79,13 +79,17 @@ public class Node {
 
                 this.currentErrorCount = 0;
 
-                this.currentState = new NodeState(latency);
+                NodeState newState = new NodeState(latency);
 
-                for (NodeListener listener : this.listeners) {
-                    try {
-                        listener.nodeIsOnline(this, latency);
-                    } catch (Exception e) {
-                        log.error(String.format("Error sending online event to listener - %s", listener), e);
+                if ( this.currentState == null || !this.currentState.equals(newState) ) {
+                    this.currentState = new NodeState(latency);
+
+                    for (NodeListener listener : this.listeners) {
+                        try {
+                            listener.nodeIsOnline(this, latency);
+                        } catch (Exception e) {
+                            log.error(String.format("Error sending online event to listener - %s", listener), e);
+                        }
                     }
                 }
 

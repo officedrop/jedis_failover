@@ -4,6 +4,7 @@ import com.netflix.curator.framework.CuratorFramework;
 import com.netflix.curator.framework.CuratorFrameworkFactory;
 import com.netflix.curator.framework.recipes.leader.LeaderLatch;
 import com.netflix.curator.retry.ExponentialBackoffRetry;
+import com.netflix.curator.retry.RetryOneTime;
 import com.netflix.curator.utils.EnsurePath;
 import com.officedrop.redis.failover.*;
 import com.officedrop.redis.failover.utils.JacksonJsonBinder;
@@ -45,6 +46,23 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
     public ZooKeeperNetworkClient(String hosts) {
 
         try {
+            int slashIndex;
+
+            if ( (slashIndex = hosts.indexOf('/')) != -1 ) {
+                String namespace = hosts.substring( hosts.indexOf('/') , hosts.length());
+                CuratorFramework namespaceCurator = CuratorFrameworkFactory
+                        .builder()
+                        .connectString(hosts.substring(0, slashIndex))
+                        .retryPolicy(new RetryOneTime(1))
+                        .build()
+                        ;
+                namespaceCurator.start();
+
+                EnsurePath namespaceEnsurePath = new EnsurePath(namespace);
+                namespaceEnsurePath.ensure(namespaceCurator.getZookeeperClient());
+                namespaceCurator.close();
+            }
+
             this.curator = CuratorFrameworkFactory
                     .builder()
                     .connectString(hosts)
@@ -54,10 +72,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
 
             this.lastClusterStatus = new ClusterStatus(null, Collections.EMPTY_LIST, Collections.EMPTY_LIST);
 
-            EnsurePath ensurePath = new EnsurePath(BASE_PATH);
-            ensurePath.ensure(this.curator.getZookeeperClient());
-
-            ensurePath = new EnsurePath(NODE_STATES_PATH);
+            EnsurePath ensurePath = new EnsurePath(NODE_STATES_PATH);
             ensurePath.ensure(this.curator.getZookeeperClient());
 
             ensurePath = new EnsurePath(CLUSTER_PATH);
