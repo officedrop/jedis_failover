@@ -115,7 +115,7 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
         this.listeners.addAll(Arrays.asList(listeners));
     }
 
-    public void removeListeners( NodeManagerListener ... listeners ) {
+    public void removeListeners(NodeManagerListener... listeners) {
         this.listeners.removeAll(Arrays.asList(listeners));
     }
 
@@ -371,25 +371,39 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
     }
 
     public void assertMasterIsConfigured() {
-        try {
-            for (Node node : this.nodes) {
-                if (this.lastClusterStatus.getMaster().equals(node.getHostConfiguration())) {
+        List<Node> availableNodes = new ArrayList<Node>();
+
+        for (Node node : this.nodes) {
+            if (!node.getCurrentState().isOffline()) {
+                availableNodes.add(node);
+            }
+        }
+
+        for (Node node : availableNodes) {
+            if (this.lastClusterStatus.getMaster().equals(node.getHostConfiguration())) {
+                try {
                     if (!node.isMaster()) {
                         node.becomeMaster();
                     }
+                } catch (Exception e) {
+                    log.error("Failed to mark current master as master", e);
                 }
+                break;
             }
+        }
 
-            for (Node node : this.nodes) {
+        for (Node node : availableNodes) {
+            try {
+                log.info("Node {} master is {}", node.getHostConfiguration(), node.getMasterConfiguration());
                 if (this.lastClusterStatus.getSlaves().contains(node.getHostConfiguration())) {
-                    log.info("Node {} master is {}", node.getHostConfiguration(), node.getMasterConfiguration());
                     if (node.getMasterConfiguration() == null || !node.getMasterConfiguration().equals(this.lastClusterStatus.getMaster())) {
                         node.makeSlaveOf(this.lastClusterStatus.getMaster().getHost(), this.lastClusterStatus.getMaster().getPort());
                     }
                 }
+            } catch (Exception e) {
+                log.error("Failed to configure slave to be slave of current correct master", e);
             }
-        } catch (Exception e) {
-            log.error("Failed to reconcile master/slave configuration, wait for next node data loop", e);
+
         }
     }
 
@@ -414,7 +428,7 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
     protected void finalize() throws Throwable {
         super.finalize();
         log.warn("Finalizing node manager {}", this);
-        if ( this.running ) {
+        if (this.running) {
             this.stop();
         }
     }
@@ -436,13 +450,16 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
     }
 
     private void publishNodeState() {
-        if (this.currentNodesState == null || !this.currentNodesState.equals(this.toNodeStates())) {
-            this.currentNodesState = this.toNodeStates();
+
+        Map<HostConfiguration, NodeState> states = this.toNodeStates();
+
+        if (this.currentNodesState == null || !this.currentNodesState.equals( states )) {
+            this.currentNodesState = states;
             this.zooKeeperClient.setNodeData(this.nodeName, this.currentNodesState);
         }
     }
 
-    public void waitUntilMasterIsAvailable( long millis ) {
+    public void waitUntilMasterIsAvailable(long millis) {
         SleepUtils.waitUntil(millis, new Function<Boolean>() {
             @Override
             public Boolean apply() {
