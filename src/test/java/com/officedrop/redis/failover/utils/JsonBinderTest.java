@@ -51,9 +51,9 @@ public class JsonBinderTest {
 
         Map<HostConfiguration,NodeState> nodes = new HashMap<HostConfiguration, NodeState>();
 
-        nodes.put(configuration7000, new NodeState(500, false));
-        nodes.put(configuration7001, new NodeState(600, false));
-        nodes.put(configuration7002, new NodeState());
+        nodes.put(configuration7000, new NodeState(500));
+        nodes.put(configuration7001, new NodeState(600));
+        nodes.put(configuration7002, NodeState.OFFLINE_STATE);
 
         byte[] data = binder.toBytes(nodes);
 

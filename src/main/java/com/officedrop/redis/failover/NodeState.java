@@ -7,20 +7,18 @@ package com.officedrop.redis.failover;
  */
 public class NodeState {
 
+    public static final NodeState OFFLINE_STATE = new NodeState(-1, true);
+
     private final long latency;
     private final boolean offline;
 
-    public NodeState( long latency, boolean offline ) {
+    private NodeState( long latency, boolean offline ) {
         this.latency = latency;
         this.offline = offline;
     }
 
     public NodeState( long latency ) {
         this(latency, false);
-    }
-
-    public NodeState() {
-        this(-1, true);
     }
 
     public long getLatency() {

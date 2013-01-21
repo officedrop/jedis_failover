@@ -11,12 +11,4 @@ public class NodeManagerException extends IllegalStateException {
         super(message);
     }
 
-    public NodeManagerException( String message, Throwable t ) {
-        super(message, t);
-    }
-
-    public NodeManagerException(Throwable t ) {
-        super(t);
-    }
-
 }

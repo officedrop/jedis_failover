@@ -6,8 +6,10 @@ import com.officedrop.redis.failover.strategy.FailoverSelectionStrategy;
 import com.officedrop.redis.failover.strategy.FailureDetectionStrategy;
 import com.officedrop.redis.failover.strategy.LatencyFailoverSelectionStrategy;
 import com.officedrop.redis.failover.strategy.SimpleMajorityStrategy;
+import com.officedrop.redis.failover.utils.DaemonThreadPoolFactory;
 import com.officedrop.redis.failover.utils.Function;
 import com.officedrop.redis.failover.utils.SleepUtils;
+import com.officedrop.redis.failover.utils.TransformationUtils;
 import com.officedrop.redis.failover.zookeeper.ZooKeeperNetworkClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +47,7 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
     private final Object mutex = new Object();
     private final List<NodeManagerListener> listeners = new CopyOnWriteArrayList<NodeManagerListener>();
     private final Set<HostConfiguration> reportedNodes = Collections.synchronizedSet(new HashSet<HostConfiguration>());
+    private final boolean closeZookeeper;
 
     public NodeManager(
             ZooKeeperClient zooKeeperClient,
@@ -54,7 +57,8 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
             FailoverSelectionStrategy failoverStrategy,
             FailureDetectionStrategy failureDetectionStrategy,
             long nodeSleepTimeout,
-            int nodeRetries
+            int nodeRetries,
+            boolean closeZooKeeper
     ) {
         this.zooKeeperClient = zooKeeperClient;
         this.redisServers = new HashSet<HostConfiguration>(redisServers);
@@ -64,6 +68,7 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
         this.nodeRetries = nodeRetries;
         this.failoverStrategy = failoverStrategy;
         this.failureDetectionStatery = failureDetectionStrategy;
+        this.closeZookeeper = closeZooKeeper;
 
         String uniqueName = UUID.randomUUID().toString();
 
@@ -91,7 +96,6 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
                 }
             }
         });
-
     }
 
     public NodeManager(String zooKeeperUrl, Collection<HostConfiguration> redisServers) {
@@ -99,11 +103,12 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
                 new ZooKeeperNetworkClient(zooKeeperUrl),
                 redisServers,
                 GenericJedisClientFactory.INSTANCE,
-                Executors.newCachedThreadPool(),
+                DaemonThreadPoolFactory.newCachedPool(),
                 LatencyFailoverSelectionStrategy.INSTANCE,
                 SimpleMajorityStrategy.INSTANCE,
                 5000,
-                3
+                3,
+                true
         );
     }
 
@@ -132,7 +137,7 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
                 Collection<HostConfiguration> available = new ArrayList<HostConfiguration>();
                 Collection<HostConfiguration> unavailable = new ArrayList<HostConfiguration>();
 
-                Map<HostConfiguration, Collection<NodeState>> statusByNode = this.toStatusByNode(nodesData);
+                Map<HostConfiguration, Collection<NodeState>> statusByNode = TransformationUtils.toStatusByNode(nodesData);
 
                 for (Map.Entry<HostConfiguration, Collection<NodeState>> nodeStates : statusByNode.entrySet()) {
                     boolean isAvailable = this.failureDetectionStatery.isAvailable(nodeStates.getKey(), nodeStates.getValue());
@@ -170,25 +175,6 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
 
         }
 
-    }
-
-    private Map<HostConfiguration, Collection<NodeState>> toStatusByNode(Map<String, Map<HostConfiguration, NodeState>> nodesData) {
-        Map<HostConfiguration, Collection<NodeState>> statusByNode = new HashMap<HostConfiguration, Collection<NodeState>>();
-
-        for (Map<HostConfiguration, NodeState> entry : nodesData.values()) {
-            for (Map.Entry<HostConfiguration, NodeState> state : entry.entrySet()) {
-                Collection<NodeState> nodeStates = statusByNode.get(state.getKey());
-
-                if (nodeStates == null) {
-                    nodeStates = new ArrayList<NodeState>();
-                    statusByNode.put(state.getKey(), nodeStates);
-                }
-
-                nodeStates.add(state.getValue());
-            }
-        }
-
-        return statusByNode;
     }
 
     private void clusterStatusChanged(ClusterStatus clusterStatus) {
@@ -279,7 +265,7 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
                 SleepUtils.safeSleep(this.nodeSleepTimeout, TimeUnit.MILLISECONDS);
             }
 
-            log.info("All nodes reported, starting leader election loop - {}", this.toNodeStates());
+            log.info("All nodes reported, starting leader election loop - {}", TransformationUtils.toNodeStates(this.nodes));
         }
 
         this.threadPool.submit(new Runnable() {
@@ -363,11 +349,38 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
     }
 
     private void reconcile() {
+        log.info("Checking if we have to do a manual failover");
+        handleManualFailover();
+
         log.info("Checking if node data has changed");
         nodeStatusesChanged(this.zooKeeperClient.getNodeDatas());
 
         log.info("Reconciling cluster configuration");
         this.assertMasterIsConfigured();
+    }
+
+    private void handleManualFailover() {
+        HostConfiguration config = this.zooKeeperClient.getManualFailoverConfiguration();
+
+        if ( config != null ) {
+            log.info("Received new master from manual failover configuration {} - {} - {}",
+                    config,
+                    config.equals(this.lastClusterStatus.getMaster()),
+                    this.reportedNodes.contains(config)
+                    );
+            if ( !config.equals(this.lastClusterStatus.getMaster()) && this.reportedNodes.contains(config) ) {
+                Set<HostConfiguration> slaves = new HashSet<HostConfiguration>();
+                slaves.add(this.lastClusterStatus.getMaster());
+                slaves.addAll( this.lastClusterStatus.getSlaves() );
+                slaves.remove(config);
+
+                ClusterStatus status =  new ClusterStatus( config, slaves, this.lastClusterStatus.getUnavailables() );
+                this.fireClusterStatusChanged(status);
+            }
+            this.zooKeeperClient.deleteManualFailoverConfiguration();
+        } else {
+            log.info("No manual failover configuration was available");
+        }
     }
 
     public void assertMasterIsConfigured() {
@@ -421,7 +434,9 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
             }
         }
 
-        this.zooKeeperClient.close();
+        if ( this.closeZookeeper ) {
+            this.zooKeeperClient.close();
+        }
     }
 
     @Override
@@ -451,7 +466,7 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
 
     private void publishNodeState() {
 
-        Map<HostConfiguration, NodeState> states = this.toNodeStates();
+        Map<HostConfiguration, NodeState> states = TransformationUtils.toNodeStates(this.nodes);
 
         if (this.currentNodesState == null || !this.currentNodesState.equals( states )) {
             this.currentNodesState = states;
@@ -466,17 +481,6 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
                 return NodeManager.this.getLastClusterStatus().hasMaster();
             }
         });
-    }
-
-    private Map<HostConfiguration, NodeState> toNodeStates() {
-
-        Map<HostConfiguration, NodeState> states = new HashMap<HostConfiguration, NodeState>();
-
-        for (Node node : this.nodes) {
-            states.put(node.getHostConfiguration(), node.getCurrentState());
-        }
-
-        return states;
     }
 
 }

@@ -51,7 +51,7 @@ public class RedisClientHandler {
                                 parameters.add(scanner.nextLine());
                             }
 
-                            log.info("Received command {}", parameters);
+                            log.debug("Received command {}", parameters);
 
                             if (!server.isAlwaysTimeout()) {
                                 switch (RedisCommand.valueOf(parameters.get(0))) {

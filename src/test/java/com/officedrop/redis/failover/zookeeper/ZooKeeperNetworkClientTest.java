@@ -34,18 +34,18 @@ public class ZooKeeperNetworkClientTest {
 
         String namespace = "/sample";
 
-        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient( server.getConnectString() + namespace );
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient(server.getConnectString() + namespace);
 
         CuratorFramework curator = CuratorFrameworkFactory
                 .builder()
-                .connectString( server.getConnectString() )
+                .connectString(server.getConnectString())
                 .retryPolicy(new RetryOneTime(1))
                 .build();
         curator.start();
 
-        Assert.assertNotNull( curator.checkExists().forPath( PathUtils.toPath( namespace, ZooKeeperNetworkClient.BASE_PATH ) ) );
-        Assert.assertNotNull( curator.checkExists().forPath( PathUtils.toPath( namespace, ZooKeeperNetworkClient.NODE_STATES_PATH ) ) );
-        Assert.assertNotNull( curator.checkExists().forPath( PathUtils.toPath( namespace, ZooKeeperNetworkClient.CLUSTER_PATH ) ) );
+        Assert.assertNotNull(curator.checkExists().forPath(PathUtils.toPath(namespace, ZooKeeperNetworkClient.BASE_PATH)));
+        Assert.assertNotNull(curator.checkExists().forPath(PathUtils.toPath(namespace, ZooKeeperNetworkClient.NODE_STATES_PATH)));
+        Assert.assertNotNull(curator.checkExists().forPath(PathUtils.toPath(namespace, ZooKeeperNetworkClient.CLUSTER_PATH)));
 
         curator.close();
         client.close();
@@ -57,30 +57,138 @@ public class ZooKeeperNetworkClientTest {
 
         TestingServer server = new TestingServer();
 
-        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient( server.getConnectString() );
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient(server.getConnectString());
 
-        Map<HostConfiguration,NodeState> states = new HashMap<HostConfiguration, NodeState>();
+        Map<HostConfiguration, NodeState> states = new HashMap<HostConfiguration, NodeState>();
 
-        states.put(JsonBinderTest.configuration7000, new NodeState(500, false));
+        states.put(JsonBinderTest.configuration7000, new NodeState(500));
 
         client.setNodeData("my-test-node", states);
 
-        byte[] originalData = client.getCurator().getData().forPath(PathUtils.toPath( ZooKeeperNetworkClient.BASE_PATH, ZooKeeperNetworkClient.NODE_STATES, "my-test-node" ));
+        byte[] originalData = client.getCurator().getData().forPath(PathUtils.toPath(ZooKeeperNetworkClient.NODE_STATES_PATH, "my-test-node"));
 
-        Map<HostConfiguration,NodeState> originalNodes = JacksonJsonBinder.BINDER.toNodeState(originalData);
+        Map<HostConfiguration, NodeState> originalNodes = JacksonJsonBinder.BINDER.toNodeState(originalData);
 
         Assert.assertTrue(originalNodes.containsKey(JsonBinderTest.configuration7000));
 
-        states.put(JsonBinderTest.configuration7001, new NodeState());
+        states.put(JsonBinderTest.configuration7001, NodeState.OFFLINE_STATE);
 
         client.setNodeData("my-test-node", states);
 
-        byte[] currentData = client.getCurator().getData().forPath(PathUtils.toPath( ZooKeeperNetworkClient.BASE_PATH, ZooKeeperNetworkClient.NODE_STATES, "my-test-node" ));
+        byte[] currentData = client.getCurator().getData().forPath(PathUtils.toPath(ZooKeeperNetworkClient.NODE_STATES_PATH, "my-test-node"));
 
-        Map<HostConfiguration,NodeState> currentNodes = JacksonJsonBinder.BINDER.toNodeState(currentData);
+        Map<HostConfiguration, NodeState> currentNodes = JacksonJsonBinder.BINDER.toNodeState(currentData);
 
         Assert.assertTrue(currentNodes.containsKey(JsonBinderTest.configuration7000));
         Assert.assertTrue(currentNodes.containsKey(JsonBinderTest.configuration7001));
+
+        client.close();
+
+        server.close();
+    }
+
+    @Test
+    public void testGetManualFailoverWhenThereIsNoConfig() throws Exception {
+
+        TestingServer server = new TestingServer();
+
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient(server.getConnectString());
+
+        Assert.assertNull(client.getManualFailoverConfiguration());
+
+        client.close();
+
+        server.close();
+    }
+
+    @Test
+    public void testManualFailioverWhenThereIsAConfig() throws Exception {
+
+        TestingServer server = new TestingServer();
+
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient(server.getConnectString());
+
+        client.getCurator().create().forPath(ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH, "localhost:7000".getBytes("UTF-8"));
+
+        Thread.sleep(1000);
+
+        Assert.assertEquals(new HostConfiguration("localhost", 7000), client.getManualFailoverConfiguration());
+
+        client.close();
+
+        server.close();
+    }
+
+    @Test
+    public void testDeleteManualFailoverConfigWhenThereIsOne() throws Exception {
+
+        TestingServer server = new TestingServer();
+
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient(server.getConnectString());
+
+        client.getCurator().create().forPath(ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH, "localhost:7000".getBytes("UTF-8"));
+
+        client.deleteManualFailoverConfiguration();
+
+        Thread.sleep(1000);
+
+        Assert.assertNull(client.getCurator().checkExists().forPath(ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH));
+
+        client.close();
+
+        server.close();
+    }
+
+    @Test
+    public void testDeleteManualFailoverConfigWhenThereIsNotOne() throws Exception {
+
+        TestingServer server = new TestingServer();
+
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient(server.getConnectString());
+
+        client.deleteManualFailoverConfiguration();
+
+        client.close();
+
+        server.close();
+    }
+
+    @Test
+    public void testLoadFailoverConfigurationWithBadData() throws Exception {
+        TestingServer server = new TestingServer();
+
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient(server.getConnectString());
+
+        client.getCurator().create().forPath(ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH, "localhost".getBytes("UTF-8"));
+
+        Thread.sleep(1000);
+
+        Assert.assertNull(client.getManualFailoverConfiguration());
+
+        Thread.sleep(1000);
+
+        Assert.assertNull(client.getCurator().checkExists().forPath( ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH ));
+
+        client.close();
+
+        server.close();
+    }
+
+    @Test
+    public void testLoadFailoverConfigurationWithBadPort() throws Exception {
+        TestingServer server = new TestingServer();
+
+        ZooKeeperNetworkClient client = new ZooKeeperNetworkClient(server.getConnectString());
+
+        client.getCurator().create().forPath(ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH, "localhost:port_here".getBytes("UTF-8"));
+
+        Thread.sleep(1000);
+
+        Assert.assertNull(client.getManualFailoverConfiguration());
+
+        Thread.sleep(1000);
+
+        Assert.assertNull(client.getCurator().checkExists().forPath( ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH ));
 
         client.close();
 

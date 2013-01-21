@@ -13,10 +13,6 @@ import java.util.concurrent.TimeUnit;
 
 public interface ZooKeeperClient extends Closeable {
 
-    public HostConfiguration getMaster();
-
-    public Collection<HostConfiguration> getSlaves();
-
     public void setNodeData( String hostName, Map<HostConfiguration,NodeState> nodeStates );
 
     public void setClusterData( ClusterStatus clusterStatus );
@@ -30,6 +26,10 @@ public interface ZooKeeperClient extends Closeable {
     public void waitUntilLeader( long timeout, TimeUnit unit) throws InterruptedException;
 
     public boolean hasLeadership();
+
+    public HostConfiguration getManualFailoverConfiguration();
+
+    public void deleteManualFailoverConfiguration();
 
     public Map<String,Map<HostConfiguration,NodeState>> getNodeDatas();
 

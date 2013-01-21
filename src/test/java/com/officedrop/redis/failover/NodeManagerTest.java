@@ -14,6 +14,8 @@ import org.apache.commons.io.IOUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.util.*;
@@ -25,6 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Time: 10:49 AM
  */
 public class NodeManagerTest {
+
+    private static final Logger log = LoggerFactory.getLogger(NodeManager.class);
 
     private static final AtomicInteger COUNT = new AtomicInteger(10000);
 
@@ -297,6 +301,42 @@ public class NodeManagerTest {
         manager.stop();
     }
 
+    @Test
+    public void testNodeManagerWithManualFailover() throws Exception {
+
+        Assert.assertTrue(zooKeeper.getClusterData().isEmpty());
+
+        ClusterStatus status = new ClusterStatus(
+                masterRedis.getHostConfiguration(),
+                Arrays.asList(slaveRedis1.getHostConfiguration(), slaveRedis2.getHostConfiguration()),
+                Collections.EMPTY_LIST);
+
+        zooKeeper.setClusterData(status);
+
+        final NodeManager manager = create();
+        manager.start();
+        manager.waitUntilMasterIsAvailable(5000);
+
+        zooKeeper.getCurator().create().forPath(
+                ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH,
+                slaveRedis1.getHostConfiguration().asHost().getBytes("UTF-8") );
+
+        Assert.assertEquals(slaveRedis1.getHostConfiguration(), zooKeeper.getManualFailoverConfiguration());
+
+        log.info("Manual failover was set");
+
+        SleepUtils.waitUntil(10000, new Function<Boolean>() {
+            @Override
+            public Boolean apply() {
+                return manager.getLastClusterStatus().getMaster().equals( slaveRedis1.getHostConfiguration() );
+            }
+        });
+
+        Assert.assertNull(zooKeeper.getCurator().checkExists().forPath(ZooKeeperNetworkClient.MANUAL_FAILOVER_PATH));
+
+        manager.stop();
+    }
+
     private void close(Closeable... closeables) {
         for (Closeable c : closeables) {
             IOUtils.closeQuietly(c);
@@ -312,7 +352,8 @@ public class NodeManagerTest {
                 new LatencyFailoverSelectionStrategy(),
                 new SimpleMajorityStrategy(),
                 1000,
-                3);
+                3,
+                true);
 
         manager.start();
 

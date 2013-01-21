@@ -24,9 +24,9 @@ public class SimpleMajorityStrategyTest {
                 Arrays.asList(
                         new NodeState(400),
                         new NodeState(500),
-                        new NodeState(),
-                        new NodeState(),
-                        new NodeState()
+                        NodeState.OFFLINE_STATE,
+                        NodeState.OFFLINE_STATE,
+                        NodeState.OFFLINE_STATE
                 )
         );
 
@@ -42,8 +42,8 @@ public class SimpleMajorityStrategyTest {
                         new NodeState(400),
                         new NodeState(500),
                         new NodeState(200),
-                        new NodeState(),
-                        new NodeState()
+                        NodeState.OFFLINE_STATE,
+                        NodeState.OFFLINE_STATE
                 )
         );
 
@@ -58,7 +58,7 @@ public class SimpleMajorityStrategyTest {
                         new NodeState(400),
                         new NodeState(500),
                         new NodeState(500),
-                        new NodeState()
+                        NodeState.OFFLINE_STATE
                 )
         );
 
@@ -72,8 +72,8 @@ public class SimpleMajorityStrategyTest {
                 Arrays.asList(
                         new NodeState(400),
                         new NodeState(500),
-                        new NodeState(),
-                        new NodeState()
+                        NodeState.OFFLINE_STATE,
+                        NodeState.OFFLINE_STATE
                 )
         );
 
@@ -85,7 +85,7 @@ public class SimpleMajorityStrategyTest {
         boolean result = strategy.isAvailable(configuration,
                 Arrays.asList(
                         new NodeState(400),
-                        new NodeState()
+                        NodeState.OFFLINE_STATE
                 )
         );
 

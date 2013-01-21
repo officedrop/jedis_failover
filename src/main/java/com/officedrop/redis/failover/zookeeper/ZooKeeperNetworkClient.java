@@ -2,6 +2,10 @@ package com.officedrop.redis.failover.zookeeper;
 
 import com.netflix.curator.framework.CuratorFramework;
 import com.netflix.curator.framework.CuratorFrameworkFactory;
+import com.netflix.curator.framework.api.BackgroundCallback;
+import com.netflix.curator.framework.api.BackgroundPathable;
+import com.netflix.curator.framework.api.CuratorEvent;
+import com.netflix.curator.framework.api.CuratorEventType;
 import com.netflix.curator.framework.recipes.leader.LeaderLatch;
 import com.netflix.curator.retry.ExponentialBackoffRetry;
 import com.netflix.curator.retry.RetryOneTime;
@@ -15,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -29,15 +34,14 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
     private static final Logger log = LoggerFactory.getLogger(ZooKeeperNetworkClient.class);
 
     public static final String BASE_PATH = "/redis_failover";
-    public static final String NODE_STATES = "/manager_node_state";
-    public static final String NODES_PATH = "/nodes";
-    public static final String NODE_STATES_PATH = PathUtils.toPath(BASE_PATH, NODE_STATES);
-    public static final String LEADER_MUTEX = PathUtils.toPath(BASE_PATH, "/leader");
-    public static final String CLUSTER_PATH = PathUtils.toPath(BASE_PATH, NODES_PATH);
+    public static final String NODE_STATES_PATH = PathUtils.toPath(BASE_PATH, "manager_node_state");
+    public static final String LEADER_MUTEX = PathUtils.toPath(BASE_PATH, "leader");
+    public static final String CLUSTER_PATH = PathUtils.toPath(BASE_PATH, "nodes");
+    public static final String MANUAL_FAILOVER_PATH = PathUtils.toPath(BASE_PATH, "manual_failover");
 
     private final CuratorFramework curator;
     private final List<ZooKeeperEventListener> listeners = new CopyOnWriteArrayList<ZooKeeperEventListener>();
-    private final JsonBinder jsonBinder = new JacksonJsonBinder();
+    private final JsonBinder jsonBinder = JacksonJsonBinder.BINDER;
     private final LeaderLatch leaderLatch;
     private volatile boolean closed = false;
     private final Timer timer;
@@ -48,14 +52,13 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
         try {
             int slashIndex;
 
-            if ( (slashIndex = hosts.indexOf('/')) != -1 ) {
-                String namespace = hosts.substring( hosts.indexOf('/') , hosts.length());
+            if ((slashIndex = hosts.indexOf('/')) != -1) {
+                String namespace = hosts.substring(hosts.indexOf('/'), hosts.length());
                 CuratorFramework namespaceCurator = CuratorFrameworkFactory
                         .builder()
                         .connectString(hosts.substring(0, slashIndex))
                         .retryPolicy(new RetryOneTime(1))
-                        .build()
-                        ;
+                        .build();
                 namespaceCurator.start();
 
                 EnsurePath namespaceEnsurePath = new EnsurePath(namespace);
@@ -84,7 +87,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
                 public void run() {
                     ClusterStatus clusterStatus = getClusterData();
 
-                    if ( clusterStatus != null && !clusterStatus.equals(ZooKeeperNetworkClient.this.lastClusterStatus) ) {
+                    if (clusterStatus != null && !clusterStatus.equals(ZooKeeperNetworkClient.this.lastClusterStatus)) {
                         ZooKeeperNetworkClient.this.lastClusterStatus = clusterStatus;
                         clusterStatusChanged();
                     }
@@ -99,17 +102,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
         }
     }
 
-    @Override
-    public HostConfiguration getMaster() {
-        return this.getClusterData().getMaster();
-    }
-
-    @Override
-    public Collection<HostConfiguration> getSlaves() {
-        return this.getClusterData().getSlaves();
-    }
-
-    CuratorFramework getCurator() {
+    public CuratorFramework getCurator() {
         return this.curator;
     }
 
@@ -125,14 +118,14 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
 
     @Override
     public void setNodeData(final String hostName, final Map<HostConfiguration, NodeState> nodeStates) {
-        String path = PathUtils.toPath(BASE_PATH, NODE_STATES, hostName);
+        String path = PathUtils.toPath(NODE_STATES_PATH, hostName);
         this.createOrSet(path, this.jsonBinder.toBytes(nodeStates), CreateMode.EPHEMERAL);
     }
 
     @Override
     public void setClusterData(final ClusterStatus clusterStatus) {
 
-        if ( !clusterStatus.hasMaster() ) {
+        if (!clusterStatus.hasMaster()) {
             throw new IllegalArgumentException("You can't set a cluster status without a master");
         }
 
@@ -161,19 +154,19 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
 
     public void close() {
         log.info("Closing ZookeeperNetworkClient");
-        if ( !this.closed ) {
+        if (!this.closed) {
             this.closed = true;
             this.timer.cancel();
-            this.close( this.leaderLatch, this.curator);
+            this.close(this.leaderLatch, this.curator);
         }
     }
 
-    private void close ( Closeable ... closables) {
+    private void close(Closeable... closables) {
 
-        for ( Closeable closeable : closables ) {
+        for (Closeable closeable : closables) {
             try {
                 closeable.close();
-            } catch ( Exception e ) {
+            } catch (Exception e) {
                 log.error(String.format("Failed to close %s", closeable), e);
                 throw new ZooKeeperException(e);
             }
@@ -183,7 +176,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
 
     private void createOrSet(String path, byte[] data, CreateMode mode) {
         try {
-            synchronized ( this.curator ) {
+            synchronized (this.curator) {
                 if (this.curator.checkExists().forPath(path) != null) {
                     this.curator.setData().forPath(path, data);
                 } else {
@@ -206,11 +199,42 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
     }
 
     @Override
+    public HostConfiguration getManualFailoverConfiguration() {
+        try {
+            if (this.curator.checkExists().forPath(MANUAL_FAILOVER_PATH) != null) {
+                byte[] data = this.curator.getData().forPath(MANUAL_FAILOVER_PATH);
+                String host = new String(data, Charset.forName("UTF-8"));
+
+                if (host.contains(":")) {
+                    String[] hostData = host.split(":");
+                    return new HostConfiguration(hostData[0], Integer.valueOf(hostData[1]));
+                } else {
+                    this.deleteManualFailoverConfiguration();
+                }
+            }
+        } catch (NumberFormatException e) {
+            this.deleteManualFailoverConfiguration();
+        } catch (Exception e) {
+            throw new ZooKeeperException(e);
+        }
+
+        return null;
+    }
+
+    public void deleteManualFailoverConfiguration() {
+        try {
+            this.curator.delete().guaranteed().inBackground().forPath(MANUAL_FAILOVER_PATH);
+        } catch (Exception e) {
+            throw new ZooKeeperException(e);
+        }
+    }
+
+    @Override
     public Map<String, Map<HostConfiguration, NodeState>> getNodeDatas() {
         Map<String, Map<HostConfiguration, NodeState>> states = new HashMap<String, Map<HostConfiguration, NodeState>>();
 
         try {
-            List<String> children = this.curator.getChildren().forPath( NODE_STATES_PATH );
+            List<String> children = this.curator.getChildren().forPath(NODE_STATES_PATH);
 
             for (String path : children) {
                 byte[] nodeData = this.curator.getData().forPath(PathUtils.toPath(NODE_STATES_PATH, path));
@@ -219,7 +243,7 @@ public class ZooKeeperNetworkClient implements ZooKeeperClient {
                     states.put(path, this.jsonBinder.toNodeState(nodeData));
                 }
             }
-        } catch ( Exception e ) {
+        } catch (Exception e) {
             log.error("Error trying to access node datas", e);
             throw new ZooKeeperException(e);
         }

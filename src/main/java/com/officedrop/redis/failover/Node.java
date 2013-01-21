@@ -31,7 +31,7 @@ public class Node {
     private final HostConfiguration hostConfiguration;
     private final JedisClientFactory factory;
     private final ReentrantLock lock = new ReentrantLock();
-    private volatile NodeState currentState = new NodeState();
+    private volatile NodeState currentState;
 
     public Node(HostConfiguration hostConfiguration, JedisClientFactory factory, long sleepDelay, int maxErrors) {
         this.hostConfiguration = hostConfiguration;
@@ -51,7 +51,7 @@ public class Node {
     public void stop() {
         this.shutdown = true;
         this.listeners.clear();
-        this.currentState = new NodeState();
+        this.currentState = NodeState.OFFLINE_STATE;
     }
 
     public NodeState getCurrentState() {
@@ -81,7 +81,7 @@ public class Node {
 
                 NodeState newState = new NodeState(latency);
 
-                if ( this.currentState == null || !this.currentState.equals(newState) ) {
+                if ( !newState.equals(this.currentState) ) {
                     this.currentState = new NodeState(latency);
 
                     for (NodeListener listener : this.listeners) {
@@ -142,14 +142,16 @@ public class Node {
         log.error(String.format("Failed to talk to redis - error count is %s - current state is %s", this.currentErrorCount, this.currentState), e);
 
         if (this.currentErrorCount > this.maxErrors) {
-            this.currentState = new NodeState();
-            for (NodeListener listener : this.listeners) {
-                try {
-                    listener.nodeIsOffline(this, e);
-                } catch (Exception exception) {
-                    log.error(String.format("Failed to signal offline event to listener %s", listener), exception);
-                }
 
+            if ( !NodeState.OFFLINE_STATE.equals( this.currentState ) ) {
+                this.currentState = NodeState.OFFLINE_STATE;
+                for (NodeListener listener : this.listeners) {
+                    try {
+                        listener.nodeIsOffline(this, e);
+                    } catch (Exception exception) {
+                        log.error(String.format("Failed to signal offline event to listener %s", listener), exception);
+                    }
+                }
             }
         }
     }

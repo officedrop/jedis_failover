@@ -60,10 +60,12 @@ public class CommonsJedisPool implements PoolableObjectFactory, JedisPool {
         } catch ( Exception e ) {
             throw new RuntimeException(e);
         } finally {
-            try {
-                this.pool.returnObject(jedis);
-            } catch ( Exception e ) {
-                log.error("Failed to return object to pool", e);
+            if ( jedis != null ) {
+                try {
+                    this.pool.returnObject(jedis);
+                } catch ( Exception e ) {
+                    log.error("Failed to return object to pool", e);
+                }
             }
         }
     }
@@ -76,8 +78,12 @@ public class CommonsJedisPool implements PoolableObjectFactory, JedisPool {
     @Override
     public void destroyObject(final Object obj) throws Exception {
         try {
-            JedisActions actions = (JedisActions) obj;
-            actions.quit();
+
+            if ( obj instanceof JedisActions ) {
+                JedisActions actions = (JedisActions) obj;
+                actions.quit();
+            }
+
         } catch ( Exception e ) {
             log.error("Failed to destroy jedis object", e);
         }

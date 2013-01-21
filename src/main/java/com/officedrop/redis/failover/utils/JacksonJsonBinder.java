@@ -72,7 +72,7 @@ public class JacksonJsonBinder implements JsonBinder {
                     Map.Entry<String,JsonNode> element = iterator.next();
                     String[] pairs = element.getKey().split(":");
                     HostConfiguration host = new HostConfiguration(pairs[0], Integer.valueOf(pairs[1]));
-                    nodeStates.put(host, new NodeState(element.getValue().asLong(), false));
+                    nodeStates.put(host, new NodeState(element.getValue().asLong()));
                 }
             }
 
@@ -84,7 +84,7 @@ public class JacksonJsonBinder implements JsonBinder {
                     JsonNode element = iterator.next();
                     String[] pairs = element.textValue().split(":");
                     HostConfiguration host = new HostConfiguration(pairs[0], Integer.valueOf(pairs[1]));
-                    nodeStates.put(host, new NodeState());
+                    nodeStates.put(host, NodeState.OFFLINE_STATE);
                 }
             }
 
