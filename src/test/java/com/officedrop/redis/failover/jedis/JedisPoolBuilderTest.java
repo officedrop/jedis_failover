@@ -1,6 +1,7 @@
 package com.officedrop.redis.failover.jedis;
 
 import com.netflix.curator.test.TestingServer;
+import com.officedrop.redis.failover.HostConfiguration;
 import com.officedrop.redis.failover.redis.RedisServer;
 import com.officedrop.redis.failover.utils.Function;
 import com.officedrop.redis.failover.utils.SleepUtils;
@@ -21,6 +22,12 @@ import java.util.concurrent.TimeUnit;
 public class JedisPoolBuilderTest {
 
     private static final Logger log = LoggerFactory.getLogger(JedisPoolBuilderTest.class);
+
+    JedisPool pool = new JedisPoolBuilder()
+            .withFailoverConfiguration(
+                    "localhost:2838",
+                    Arrays.asList(new HostConfiguration("localhost", 7000), new HostConfiguration("localhost", 7001)))
+            .build();
 
     @Test
     public void testRealClientFailsOverToNewMaster() throws Exception {
