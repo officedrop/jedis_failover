@@ -38,11 +38,14 @@ public class JacksonJsonBinder implements JsonBinder {
 
             for ( Map.Entry<HostConfiguration,NodeState> entry : nodeStates.entrySet() ) {
 
-                if ( entry.getValue().isOffline() ) {
-                    unavailables.add( entry.getKey().asHost() );
-                } else {
-                    availables.put( entry.getKey().asHost(), entry.getValue().getLatency() );
+                if ( entry.getValue() != null ) {
+                    if ( entry.getValue().isOffline() ) {
+                        unavailables.add( entry.getKey().asHost() );
+                    } else {
+                        availables.put( entry.getKey().asHost(), entry.getValue().getLatency() );
+                    }
                 }
+
             }
 
             result.put(AVAILABLE, availables);
@@ -163,9 +166,11 @@ public class JacksonJsonBinder implements JsonBinder {
 
         List<HostConfiguration> result = new ArrayList<HostConfiguration>();
 
-        for ( JsonNode element : node ) {
-            String[] paths = element.asText().split(":");
-            result.add( new HostConfiguration( paths[0], Integer.valueOf( paths[1] ) ) );
+        if ( node != null ) {
+            for ( JsonNode element : node ) {
+                String[] paths = element.asText().split(":");
+                result.add( new HostConfiguration( paths[0], Integer.valueOf( paths[1] ) ) );
+            }
         }
 
         return result;

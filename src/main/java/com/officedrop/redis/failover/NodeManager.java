@@ -283,7 +283,6 @@ public class NodeManager implements NodeListener, ClusterChangeEventSource {
                 if (!this.zooKeeperClient.hasLeadership()) {
                     log.info("Trying to acquire redis failover cluster leadership");
                     this.zooKeeperClient.waitUntilLeader(5, TimeUnit.SECONDS);
-                    log.info("Node manager {} became master of the redis failover cluster", this.nodeName);
                 } else {
                     log.info("Last cluster status is {}", this.lastClusterStatus);
                     synchronized (this.mutex) {
