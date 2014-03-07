@@ -1,7 +1,7 @@
 package com.officedrop.redis.failover.jedis;
 
 import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisShardInfo;
+import redis.clients.jedis.Protocol;
 
 /**
  * User: Maurício Linhares
@@ -10,21 +10,11 @@ import redis.clients.jedis.JedisShardInfo;
  */
 public class GenericJedisClient extends Jedis implements JedisClient {
 
-
-    public GenericJedisClient(JedisShardInfo shardInfo) {
-        super(shardInfo);
-    }
-
-    public GenericJedisClient(String host, int port) {
-        super(host, port);
-    }
-
-    public GenericJedisClient(String host, int port, int timeout) {
+    public GenericJedisClient(String host, int port, int timeout, int database) {
         super(host, port, timeout);
-    }
-
-    public GenericJedisClient(String host) {
-        super(host);
+        if ( database != Protocol.DEFAULT_DATABASE) {
+            this.select(database);
+        }
     }
 
 }

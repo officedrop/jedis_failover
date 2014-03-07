@@ -12,12 +12,17 @@ public class HostConfiguration {
     private final String host;
     private final int port;
     private final int timeout;
+    private final int database;
 
     public HostConfiguration(String host, int port) {
-        this( host, port, Protocol.DEFAULT_TIMEOUT );
+        this( host, port, Protocol.DEFAULT_TIMEOUT, Protocol.DEFAULT_DATABASE );
     }
 
     public HostConfiguration(String host, int port, int timeout) {
+        this( host, port, timeout, Protocol.DEFAULT_DATABASE );
+    }
+
+    public HostConfiguration(String host, int port, int timeout, int database) {
 
         if ( host == null || host.trim().isEmpty() ) {
             throw new IllegalArgumentException("'host' can not be null");
@@ -26,6 +31,7 @@ public class HostConfiguration {
         this.port = port;
         this.timeout = timeout;
         this.host = host;
+        this.database = database;
     }
 
     public int getPort() {
@@ -38,6 +44,10 @@ public class HostConfiguration {
 
     public int getTimeout() {
         return this.timeout;
+    }
+
+    public int getDatabase() {
+        return this.database;
     }
 
     public String asHost() {
@@ -53,6 +63,7 @@ public class HostConfiguration {
         HostConfiguration that = (HostConfiguration) o;
 
         if (port != that.port) return false;
+        if (database != that.database) return false;
         if (!host.equals(that.host)) return false;
 
         return true;

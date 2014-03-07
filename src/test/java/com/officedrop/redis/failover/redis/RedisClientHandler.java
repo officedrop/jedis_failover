@@ -87,6 +87,9 @@ public class RedisClientHandler {
                                         server.set(parameters.get(1), parameters.get(2));
                                         writer.writeSuccess("OK");
                                         break;
+                                    case SELECT:
+                                        writer.writeSuccess("OK");
+                                        break;
                                     case QUIT:
                                         writer.writeSuccess("OK");
                                         break;

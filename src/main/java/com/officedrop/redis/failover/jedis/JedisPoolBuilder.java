@@ -61,6 +61,10 @@ public class JedisPoolBuilder {
         return this.withHost(new HostConfiguration(host, port));
     }
 
+    public JedisPoolBuilder withHost( String host, int port, int timeout, int database ) {
+        return this.withHost(new HostConfiguration(host, port, timeout, database));
+    }
+
     public JedisPoolBuilder withPoolConfiguration( JedisPoolConfig config ) {
         this.poolConfig = config;
 

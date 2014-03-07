@@ -42,7 +42,7 @@ and follow it.
 ## Pending
 
 * More configuration
-* Fix leader election bug that prevents the library to work with the **redis_failover** gem node managers
+* Fix leader election bug that prevents the library from working with the **redis_failover** gem node managers
 * Allow for pools to be created without a node manager (client only mode, as in the Ruby gem)
 * More tests
 * Open HTTP port to allow for easy manual failover even for running processes

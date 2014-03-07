@@ -17,7 +17,12 @@ public class CommonJedisFactory implements JedisFactory {
 
     @Override
     public JedisActions create() {
-        return new GenericJedisClient(this.configuration.getHost(), this.configuration.getPort());
+        return new GenericJedisClient(
+                this.configuration.getHost(),
+                this.configuration.getPort(),
+                this.configuration.getTimeout(),
+                this.configuration.getDatabase()
+                );
     }
 
 }

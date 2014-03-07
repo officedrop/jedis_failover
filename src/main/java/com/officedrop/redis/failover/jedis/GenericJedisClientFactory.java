@@ -13,7 +13,12 @@ public class GenericJedisClientFactory implements JedisClientFactory {
 
     @Override
     public JedisClient create(final HostConfiguration configuration) {
-        return new GenericJedisClient(configuration.getHost(), configuration.getPort(), configuration.getTimeout());
+        return new GenericJedisClient(
+                configuration.getHost(),
+                configuration.getPort(),
+                configuration.getTimeout(),
+                configuration.getDatabase()
+                );
     }
 
 }

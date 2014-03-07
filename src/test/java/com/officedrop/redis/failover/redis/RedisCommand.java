@@ -13,6 +13,7 @@ package com.officedrop.redis.failover.redis;
     SLAVEOF,
     GET,
     SET,
-    QUIT
+    QUIT,
+    SELECT,
 
 }
